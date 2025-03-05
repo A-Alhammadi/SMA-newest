@@ -69,7 +69,7 @@ LEARNING_CONFIG = {
 STRATEGY_CONFIG = {
     # Volatility calculation settings
     'volatility': {
-        'methods': ['parkinson', 'standard', 'yang_zhang', 'garch'],  # Added all methods
+        'methods': ['parkinson'],  # 'parkinson', 'standard', 'yang_zhang', 'garch' Added all methods
         'lookback_periods': [8, 13, 20, 34, 50, 80, 100, 120, 150, 200],  # More Fibonacci and round numbers
         'regime_smoothing': [2, 3, 5, 8, 10, 13, 21],  # Added more Fibonacci-based smoothing periods
         'min_history_multiplier': 5,
@@ -77,7 +77,7 @@ STRATEGY_CONFIG = {
     
     # Regime detection settings
     'regime_detection': {
-        'methods': ['kmeans', 'quantile', 'hmm'],  # Added more detection methods
+        'methods': ['hmm'],  #'kmeans', 'quantile', 'hmm' Added more detection methods
         'n_regimes': [2, 3, 4],  # Testing different number of regimes
         'quantile_thresholds': [
             [0.33, 0.67],       # For 3 regimes (standard)
@@ -134,7 +134,7 @@ STRATEGY_CONFIG = {
             'optimize_regime_params': True,  # Whether to optimize regime detection parameters
             'optimize_sma_params': True,  # Whether to optimize SMA parameters
             'advanced_mode': True,  # Set to True to enable all parameter combinations
-            'early_stop_threshold': 10000,  # Reduced non-improving combinations before stopping for walk-forward
+            'early_stop_threshold': 7500,  # Reduced non-improving combinations before stopping for walk-forward
             'min_combinations': 200,        # Minimum combinations to test regardless of improvement
             'print_frequency': 20,          # How often to print progress during optimization
             'adaptive_sampling': True,      # Use adaptive sampling for walk-forward

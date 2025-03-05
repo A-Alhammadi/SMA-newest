@@ -9,7 +9,7 @@ from statsmodels.nonparametric.kde import KDEUnivariate
 
 def detect_regimes_hmm(volatility_series, n_regimes=3, smoothing_period=5):
     """
-    Detect volatility regimes using Hidden Markov Models.
+    Detect volatility regimes using Hidden Markov Models with improved stability.
     
     Parameters:
         volatility_series (Series): Volatility time series
@@ -19,75 +19,85 @@ def detect_regimes_hmm(volatility_series, n_regimes=3, smoothing_period=5):
     Returns:
         Series: Regime classifications (0 to n_regimes-1)
     """
-    # Prepare data for HMM
+    # Prepare data for HMM - robust handling of edge cases
+    vol_values = volatility_series.replace([np.inf, -np.inf], np.nan)
+    
+    # Ensure we have positive values for log transform
+    min_positive = vol_values[vol_values > 0].min() if (vol_values > 0).any() else 1e-6
+    vol_values = vol_values.fillna(min_positive).clip(lower=min_positive)
+    
     # Use log volatility to better capture distribution characteristics
-    log_vol = np.log(volatility_series.replace(0, np.nan).fillna(volatility_series.min()))
-    X = log_vol.values.reshape(-1, 1)
+    log_vol = np.log(vol_values)
     
-    # Initialize HMM model
-    model = hmm.GaussianHMM(
-        n_components=n_regimes, 
-        covariance_type="full", 
-        n_iter=100,
-        tol=0.01,
-        random_state=42
-    )
+    # Standardize the log volatility for better HMM performance
+    log_vol_std = (log_vol - log_vol.mean()) / log_vol.std()
+    X = log_vol_std.values.reshape(-1, 1)
     
-    # Fit model
-    try:
-        model.fit(X)
-        
-        # Predict hidden states
-        hidden_states = model.predict(X)
-        
-        # Map states by volatility level (0=low, n_regimes-1=high)
-        # Calculate average volatility for each state
-        state_vol_means = {}
-        for state in range(n_regimes):
-            if np.any(hidden_states == state):
-                state_vol_means[state] = np.mean(volatility_series[hidden_states == state])
-        
-        # Sort states by mean volatility
-        sorted_states = sorted(state_vol_means.items(), key=lambda x: x[1])
-        state_mapping = {old_state: new_state for new_state, (old_state, _) in enumerate(sorted_states)}
-        
-        # Apply mapping to reorder states from low to high volatility
-        mapped_states = np.array([state_mapping.get(state, state) for state in hidden_states])
-        
-        # Create Series with regime labels
-        regimes = pd.Series(mapped_states, index=volatility_series.index)
-        
-        # Apply smoothing to prevent frequent regime transitions
-        if smoothing_period > 1:
-            regimes = regimes.rolling(window=smoothing_period, center=True).median().ffill().bfill()
-            regimes = regimes.round().astype(int)
-        
-        return regimes
-        
-    except Exception as e:
-        print(f"HMM estimation failed: {e}")
-        print("Falling back to K-means for regime detection")
-        # Fall back to K-means
-        kmeans = KMeans(n_clusters=n_regimes, random_state=42, n_init=10)
-        labels = kmeans.fit_predict(X)
-        
-        # Sort regimes by volatility level
-        cluster_centers = kmeans.cluster_centers_.flatten()
-        sorting_indices = np.argsort(cluster_centers)
-        
-        # Map original labels to sorted labels
-        regime_map = {sorting_indices[i]: i for i in range(n_regimes)}
-        sorted_labels = np.array([regime_map[label] for label in labels])
-        
-        # Create Series with regime labels
-        regimes = pd.Series(sorted_labels, index=volatility_series.index)
-        
-        # Apply smoothing
-        if smoothing_period > 1:
-            regimes = regimes.rolling(window=smoothing_period, center=True).median().ffill().bfill()
-            regimes = regimes.round().astype(int)
-        
-        return regimes
+    # List of configurations to try in order of preference
+    hmm_configs = [
+        {"covariance_type": "full", "n_iter": 500, "tol": 0.05},
+        {"covariance_type": "diag", "n_iter": 500, "tol": 0.05},
+        {"covariance_type": "spherical", "n_iter": 500, "tol": 0.1},
+        {"covariance_type": "tied", "n_iter": 1000, "tol": 0.1}
+    ]
+    
+    # Try different HMM configurations
+    for config in hmm_configs:
+        # Try multiple random initializations
+        for attempt in range(3):
+            try:
+                # Initialize HMM model with current configuration
+                model = hmm.GaussianHMM(
+                    n_components=n_regimes, 
+                    covariance_type=config["covariance_type"], 
+                    n_iter=config["n_iter"],
+                    tol=config["tol"],
+                    random_state=None,  # Use different random initialization each time
+                    verbose=False
+                )
+                
+                # Fit model with a timeout mechanism
+                model.fit(X)
+                
+                # Check if model converged
+                if not model.monitor_.converged:
+                    print(f"HMM did not converge with {config['covariance_type']} covariance (attempt {attempt+1})")
+                    continue
+                
+                # Predict hidden states
+                hidden_states = model.predict(X)
+                
+                # Map states by volatility level (0=low, n_regimes-1=high)
+                # Calculate average volatility for each state
+                state_vol_means = {}
+                for state in range(n_regimes):
+                    if np.any(hidden_states == state):
+                        state_vol_means[state] = np.mean(volatility_series[hidden_states == state])
+                
+                # Sort states by mean volatility
+                sorted_states = sorted(state_vol_means.items(), key=lambda x: x[1])
+                state_mapping = {old_state: new_state for new_state, (old_state, _) in enumerate(sorted_states)}
+                
+                # Apply mapping to reorder states from low to high volatility
+                mapped_states = np.array([state_mapping.get(state, state) for state in hidden_states])
+                
+                # Create Series with regime labels
+                regimes = pd.Series(mapped_states, index=volatility_series.index)
+                
+                # Apply smoothing to prevent frequent regime transitions
+                if smoothing_period > 1:
+                    regimes = regimes.rolling(window=smoothing_period, center=True).median().ffill().bfill()
+                    regimes = regimes.round().astype(int)
+                
+                print(f"Successfully fitted HMM with {config['covariance_type']} covariance")
+                return regimes
+                
+            except Exception as e:
+                print(f"HMM estimation failed with {config['covariance_type']} covariance (attempt {attempt+1}): {str(e)}")
+    
+    # If all HMM attempts failed, fall back to K-means
+    print("All HMM attempts failed. Falling back to K-means for regime detection")
+    return detect_regimes_kmeans(volatility_series, n_regimes, smoothing_period)
     
 def detect_regimes_kmeans(volatility_series, n_regimes=3, smoothing_period=5):
     """
