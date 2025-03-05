@@ -20,13 +20,11 @@ from performance_metrics import (
     calculate_max_drawdown, calculate_calmar_ratio
 )
 from parameter_optimization import (
-    generate_time_series_cv_splits, optimize_parameters_with_cv, 
-    create_full_parameter_set, test_parameter_combination,
-    generate_parameter_grid, ensure_parameters,
-    # New regime-specific functions:
-    test_parameters_by_regime, calculate_strategy_returns,
-    optimize_parameters_by_regime
+    test_parameter_combination,
+    generate_parameter_grid, 
+    ensure_parameters
 )
+
 from visualization import (
     # New regime-specific functions:
     plot_enhanced_results_regime_specific, save_enhanced_results_regime_specific
@@ -469,149 +467,6 @@ def apply_enhanced_sma_strategy_regime_specific(df, regime_params, config):
                 print(f"  Alpha: {regime_return - regime_market_return:.4%}")
     
     return result_df
-
-def run_enhanced_backtest_regime_specific():
-    """
-    Run enhanced backtest of SMA strategy with regime-specific parameter optimization.
-    """
-    print(f"Starting enhanced SMA backtest with regime-specific optimization for {CURRENCY}")
-    start_time = time.time()
-    
-    try:
-        # Initialize database connection
-        db = DatabaseHandler()
-        
-        # Fetch complete data for the entire period
-        print(f"Fetching data from {TRAINING_START} to {TESTING_END}")
-        df = db.get_historical_data(CURRENCY, TRAINING_START, TESTING_END)
-        if len(df) < 1000:
-            print(f"Insufficient data for {CURRENCY} ({len(df)} data points). Exiting.")
-            db.close()
-            return None, None, None
-        
-        # Generate cross-validation splits for parameter optimization
-        cv_config = STRATEGY_CONFIG['cross_validation']
-        splits = generate_time_series_cv_splits(
-            TRAINING_START, 
-            TRAINING_END,
-            n_splits=cv_config['n_splits'],
-            min_train_size=cv_config['min_train_size'],
-            step_forward=cv_config['step_forward']
-        )
-        
-        # Optimize parameters using cross-validation - regime specific
-        regime_params, cv_results, regime_distribution = optimize_parameters_by_regime(df, STRATEGY_CONFIG, splits)
-
-        if not regime_params:
-            print("Regime-specific parameter optimization failed. Exiting.")
-            db.close()
-            return None, None, None
-
-        # Fetch test data
-        print("Fetching test data...")
-        try:
-            test_df = df.loc[TESTING_START:TESTING_END].copy()
-            print(f"Test data fetched: {len(test_df)} data points")
-        except Exception as e:
-            print(f"Error fetching test data: {e}")
-            import traceback
-            traceback.print_exc()
-            db.close()
-            return None, None, None
-
-        # Apply enhanced strategy with regime-specific parameters
-        print("Applying enhanced strategy with regime-specific parameters...")
-        try:
-            result_df = apply_enhanced_sma_strategy_regime_specific(test_df, regime_params, STRATEGY_CONFIG)
-            print("Strategy applied successfully")
-        except Exception as e:
-            print(f"Error applying strategy: {e}")
-            import traceback
-            traceback.print_exc()
-            db.close()
-            return None, None, None
-            
-        # Calculate performance metrics
-        metrics = calculate_advanced_metrics(result_df['strategy_returns'], result_df['strategy_cumulative'])
-        
-        # Calculate buy & hold metrics
-        buy_hold_return = result_df['buy_hold_cumulative'].iloc[-1] - 1
-        buy_hold_metrics = calculate_advanced_metrics(result_df['returns'], result_df['buy_hold_cumulative'])
-        
-        # Close database connection
-        db.close()
-        
-        # Print test results
-        print("\n===== Test Results =====")
-        print(f"Total Return: {metrics['total_return']:.4%}")
-        print(f"Annualized Return: {metrics['annualized_return']:.4%}")
-        print(f"Volatility: {metrics['volatility']:.4%}")
-        print(f"Max Drawdown: {metrics['max_drawdown']:.4%}")
-        print(f"Sharpe Ratio: {metrics['sharpe_ratio']:.4f}")
-        print(f"Sortino Ratio: {metrics['sortino_ratio']:.4f}")
-        print(f"Calmar Ratio: {metrics['calmar_ratio']:.4f}")
-        print(f"Win Rate: {metrics['win_rate']:.4%}")
-        print(f"Gain-to-Pain Ratio: {metrics['gain_to_pain']:.4f}")
-        print(f"Buy & Hold Return: {buy_hold_return:.4%}")
-        print(f"Outperformance: {metrics['total_return'] - buy_hold_return:.4%}")
-        
-        # Calculate performance by regime
-        regimes = result_df['regime']
-        strategy_returns = result_df['strategy_returns']
-        market_returns = result_df['returns']
-        
-        print("\n===== Regime Performance =====")
-        for regime_id in sorted(regime_params.keys()):
-            regime_mask = (regimes == regime_id)
-            if regime_mask.any():
-                regime_strategy_returns = strategy_returns[regime_mask]
-                regime_market_returns = market_returns[regime_mask]
-                
-                if len(regime_strategy_returns) > 0:
-                    regime_return = (1 + regime_strategy_returns).prod() - 1
-                    regime_market_return = (1 + regime_market_returns).prod() - 1
-                    regime_alpha = regime_return - regime_market_return
-                    
-                    # Calculate Sharpe and Sortino ratios
-                    regime_sharpe = calculate_sharpe_ratio(regime_strategy_returns)
-                    regime_sortino = calculate_sortino_ratio(regime_strategy_returns)
-                    
-                    # Get parameter set used for this regime
-                    regime_param_set = regime_params[regime_id]
-                    short_window = regime_param_set.get('short_window', 13)
-                    long_window = regime_param_set.get('long_window', 55)
-                    
-                    print(f"Regime {regime_id} (Using SMA {short_window}/{long_window}):")
-                    print(f"  Data points: {regime_mask.sum()} ({regime_mask.mean()*100:.2f}%)")
-                    print(f"  Strategy Return: {regime_return:.4%}")
-                    print(f"  Market Return: {regime_market_return:.4%}")
-                    print(f"  Alpha: {regime_alpha:.4%}")
-                    print(f"  Sharpe: {regime_sharpe:.4f}")
-                    print(f"  Sortino: {regime_sortino:.4f}")
-        
-        # Plot results - we need to modify the plotting function to show regime-specific parameters
-        if PLOT_RESULTS:
-            # Convert regime_params to a format plot_enhanced_results can use
-            combined_params = {
-                'regime_specific': True,  # Flag to indicate we're using regime-specific parameters
-                'regime_params': regime_params
-            }
-            plot_enhanced_results_regime_specific(result_df, combined_params, metrics)
-        
-        # Save results
-        if SAVE_RESULTS:
-            save_enhanced_results_regime_specific(result_df, regime_params, metrics, cv_results)
-        
-        end_time = time.time()
-        print(f"\nTotal execution time: {(end_time - start_time) / 60:.2f} minutes")
-        
-        return result_df, regime_params, metrics
-    
-    except Exception as e:
-        print(f"Error in backtest: {e}")
-        import traceback
-        traceback.print_exc()
-        return None, None, None
 
 def main():
     """Main entry point for the enhanced SMA strategy with regime-specific optimization."""

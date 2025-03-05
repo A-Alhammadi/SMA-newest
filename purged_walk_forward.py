@@ -1,6 +1,13 @@
 # purged_walk_forward.py
 # Implementation of purged walk-forward cross-validation for financial time series
-
+import optuna
+from optuna.visualization import plot_param_importances, plot_optimization_history, plot_contour
+from optuna.importance import get_param_importances
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.preprocessing import StandardScaler
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.linear_model import LinearRegression
 import os
 import time
 import numpy as np
@@ -172,7 +179,7 @@ def apply_purging_to_training_data(train_df, test_start, purge_days):
 
 def optimize_section_parameters_purged(train_df, val_df, test_start, config, section_index, previous_sections):
     """
-    Optimize parameters for a purged walk-forward section.
+    Optimize parameters for a purged walk-forward section using Optuna.
     Enhanced to ensure proper regime-specific optimization and learning.
     
     Parameters:
@@ -185,6 +192,7 @@ def optimize_section_parameters_purged(train_df, val_df, test_start, config, sec
         
     Returns:
         dict: Optimized parameters for each regime
+        dict: Studies by regime for later analysis
     """
     print(f"\nOptimizing parameters for purged walk-forward section {section_index+1}")
     
@@ -274,9 +282,10 @@ def optimize_section_parameters_purged(train_df, val_df, test_start, config, sec
     for regime_id, count in regime_counts.items():
         print(f"Regime {regime_id}: {count} data points ({count/len(regimes)*100:.2f}%)")
     
-    # Step 2: Optimize parameters for each regime separately
+    # Step 2: Optimize parameters for each regime separately using Optuna
     regime_best_params = {}
     regime_metrics = {}
+    regime_studies = {}  # Store studies for later analysis
     
     for regime_id in range(n_regimes):
         # Create mask for this regime
@@ -308,166 +317,74 @@ def optimize_section_parameters_purged(train_df, val_df, test_start, config, sec
         
         print(f"\nOptimizing parameters for Regime {regime_id} using {regime_count} data points")
         
-        # IMPORTANT: Generate parameter combinations with REGIME-SPECIFIC LEARNING
-        param_grid = generate_parameter_set_with_learning(
-            previous_sections, 
-            config, 
-            section_index,
-            target_regime=regime_id  # This is the key parameter - target specific regime
+        # Generate parameter bounds
+        param_bounds = generate_parameter_bounds(strategy_config)
+        
+        # Determine number of trials based on available data points
+        base_n_trials = config.get('STRATEGY_CONFIG', {}).get('cross_validation', {}).get('parameter_testing', {}).get('n_random_combinations', 100)
+        
+        # Scale trials based on data size, but limit to reasonable bounds
+        data_size_factor = min(2.0, max(0.5, regime_count / 500))
+        n_trials = int(base_n_trials * data_size_factor)
+        n_trials = min(300, max(50, n_trials))  # Cap between 50 and 300 trials
+        
+        print(f"Running {n_trials} Optuna trials for regime {regime_id}")
+        
+        # Run Optuna optimization
+        best_params, study = optimize_parameters_with_optuna(
+            regime_df, 
+            param_bounds, 
+            strategy_config,
+            n_trials=n_trials,
+            regime_id=regime_id
         )
         
-        # Check if we have enough parameter combinations
-        if not param_grid or len(param_grid) < 10:
-            print(f"WARNING: Not enough parameter combinations for regime {regime_id}")
-            # Fall back to base parameter grid
-            base_param_grid = generate_parameter_grid(
-                strategy_config, 
-                strategy_config.get('cross_validation', {}).get('parameter_testing', {})
-            )
-            param_grid = base_param_grid[:100]  # Take up to 100 combinations
-        
-        # Track best results for this regime
-        best_score = -np.inf
-        best_params = None
-        best_metrics = None
-        
-        # Get optimization settings
-        cv_config = config.get('STRATEGY_CONFIG', {}).get('cross_validation', {}).get('parameter_testing', {})
-        print_frequency = cv_config.get('print_frequency', 20)
-        early_stop_threshold = cv_config.get('early_stop_threshold', 1000)
-        min_combinations = cv_config.get('min_combinations', 100)
-        
-        # Try improved optimization methods if available
-        optimization_method = cv_config.get('method', 'greedy')
-        
-        # Check if Bayesian optimization should be used
-        use_bayesian = cv_config.get('use_bayesian', False)
-        if use_bayesian:
-            try:
-                # Try to use Bayesian optimization
-                param_bounds = generate_parameter_bounds(strategy_config)
-                n_trials = min(200, len(param_grid))
-                best_params = optimize_parameters_bayesian(regime_df, param_bounds, strategy_config, n_trials)
-                
-                if best_params:
-                    # Test best parameters to get metrics
-                    metrics, _ = test_parameter_combination(regime_df, best_params, strategy_config)
-                    best_score = calculate_fitness_score(metrics, strategy_config)
-                    best_metrics = metrics
-                    print(f"  Bayesian optimization found parameters with score: {best_score:.4f}")
-                else:
-                    print(f"  Bayesian optimization failed, falling back to greedy method")
-                    use_bayesian = False
-            except Exception as e:
-                print(f"  Bayesian optimization error: {e}")
-                print(f"  Falling back to greedy method")
-                use_bayesian = False
-        
-        # If not using Bayesian or it failed, use improved greedy
-        if not use_bayesian:
-            # Try to use improved greedy optimization if available
-            try:
-                use_improved_greedy = True
-                if use_improved_greedy:
-                    fold_results = process_greedy_fold_improved(regime_df, param_grid, strategy_config)
-                else:
-                    # Regular greedy optimization
-                    early_stop_counter = 0
-                    fold_results = []
-                    
-                    # Start timer for progress tracking
-                    start_time = time.time()
-                    last_print_time = start_time
-                    
-                    for j, params in enumerate(param_grid):
-                        try:
-                            # Test this parameter combination
-                            metrics, _ = test_parameter_combination(regime_df, params, strategy_config)
-                            score = calculate_fitness_score(metrics, strategy_config)
-                            
-                            # Store result
-                            fold_result = {
-                                'params': params,
-                                'metrics': metrics,
-                                'score': score
-                            }
-                            fold_results.append(fold_result)
-                            
-                            # Check for improvement and early stopping
-                            if score > best_score:
-                                best_score = score
-                                best_params = params
-                                best_metrics = metrics
-                                early_stop_counter = 0
-                                # Print progress when we find a better score
-                                print(f"  Found better score: {score:.4f} at combination {j+1}")
-                                print(f"  Parameters: {params}")
-                            else:
-                                early_stop_counter += 1
-                            
-                            # Early stopping, but only after minimum combinations
-                            if early_stop_counter >= early_stop_threshold and j >= min_combinations:
-                                print(f"  Early stopping after {j+1} combinations (no improvement for {early_stop_threshold} combinations)")
-                                break
-                            
-                            # Print progress periodically
-                            current_time = time.time()
-                            if j == 0 or (j+1) % print_frequency == 0 or (j+1) == len(param_grid) or (current_time - last_print_time) > 60:
-                                elapsed_time = current_time - start_time
-                                combinations_per_second = (j+1) / elapsed_time if elapsed_time > 0 else 0
-                                estimated_total_time = len(param_grid) / combinations_per_second if combinations_per_second > 0 else 0
-                                remaining_time = estimated_total_time - elapsed_time if estimated_total_time > 0 else 0
-                                
-                                print(f"  Tested {j+1}/{len(param_grid)} combinations ({(j+1)/len(param_grid)*100:.1f}%)")
-                                print(f"  Elapsed time: {elapsed_time/60:.1f} mins, Est. remaining: {remaining_time/60:.1f} mins")
-                                print(f"  Current best score: {best_score:.4f}, No improvement for {early_stop_counter} combinations")
-                                last_print_time = current_time
-                                
-                        except Exception as e:
-                            print(f"  Error testing parameters {params}: {e}")
-                
-                # If using improved greedy, extract best result
-                if use_improved_greedy and fold_results:
-                    # Sort by score and get best
-                    fold_results.sort(key=lambda x: x.get('score', -np.inf), reverse=True)
-                    if fold_results[0]['score'] > -np.inf:
-                        best_params = fold_results[0]['params']
-                        best_score = fold_results[0]['score']
-                        best_metrics = fold_results[0]['metrics']
+        if best_params:
+            # Extract performance metrics from best trial
+            best_trial = study.best_trial
+            metrics = {
+                'sharpe_ratio': best_trial.user_attrs.get('sharpe_ratio', 0),
+                'total_return': best_trial.user_attrs.get('total_return', 0),
+                'max_drawdown': best_trial.user_attrs.get('max_drawdown', 0),
+                'sortino_ratio': best_trial.user_attrs.get('sortino_ratio', 0),
+                'calmar_ratio': best_trial.user_attrs.get('calmar_ratio', 0)
+            }
             
-            except Exception as e:
-                print(f"  Error in optimization process: {e}")
-                # In case of failure, use previous parameters or defaults
-                if previous_sections:
-                    for prev_section in reversed(previous_sections):
-                        if 'regime_params' in prev_section and regime_id in prev_section['regime_params']:
-                            best_params = prev_section['regime_params'][regime_id]
-                            print(f"  Using parameters from previous section due to error")
-                            break
-                if best_params is None:
-                    best_params = param_grid[0] if param_grid else None
-        
-        # Store best parameters for this regime
-        if best_params is not None:
+            # Print best parameters and metrics
             print(f"\nBest parameters for regime {regime_id}:")
-            print(f"  {best_params}")
-            print(f"  Score: {best_score:.4f}")
+            for param, value in best_params.items():
+                print(f"  {param}: {value}")
             
-            if best_metrics:
-                print(f"  Sharpe: {best_metrics.get('sharpe_ratio', 0):.4f}, "
-                      f"Sortino: {best_metrics.get('sortino_ratio', 0):.4f}")
-                print(f"  Return: {best_metrics.get('total_return', 0):.4%}, "
-                      f"Max DD: {best_metrics.get('max_drawdown', 0):.4%}")
+            print(f"Performance metrics on training data:")
+            print(f"  Sharpe Ratio: {metrics['sharpe_ratio']:.4f}")
+            print(f"  Total Return: {metrics['total_return']:.4%}")
+            print(f"  Max Drawdown: {metrics['max_drawdown']:.4%}")
             
+            # Store results
             regime_best_params[regime_id] = best_params
-            regime_metrics[regime_id] = best_metrics
+            regime_metrics[regime_id] = metrics
+            regime_studies[regime_id] = study
+            
+            # Analyze parameter importance
+            try:
+                print(f"\nAnalyzing parameter importance for regime {regime_id}")
+                param_importance = analyze_parameter_importance(study, config, regime_id=regime_id)
+                
+                # Print top 5 most important parameters
+                top_params = sorted(param_importance.items(), key=lambda x: x[1], reverse=True)[:5]
+                print(f"Top 5 most important parameters for regime {regime_id}:")
+                for param, importance in top_params:
+                    print(f"  {param}: {importance:.4f}")
+            except Exception as e:
+                print(f"Error analyzing parameter importance: {e}")
         else:
             print(f"No valid parameters found for regime {regime_id}")
             # Use default parameters
-            regime_best_params[regime_id] = param_grid[0] if param_grid else generate_parameter_grid(
+            param_grid = generate_parameter_grid(
                 strategy_config, 
                 strategy_config.get('cross_validation', {}).get('parameter_testing', {})
-            )[0]
+            )
+            regime_best_params[regime_id] = param_grid[0]
     
     # Ensure all regimes have parameters
     for regime_id in range(n_regimes):
@@ -507,18 +424,28 @@ def optimize_section_parameters_purged(train_df, val_df, test_start, config, sec
                     from performance_metrics import calculate_sharpe_ratio
                     regime_sharpe = calculate_sharpe_ratio(regime_returns)
                     print(f"  Regime {regime_id} Validation Sharpe: {regime_sharpe:.4f}")
+                    validation_regime_metrics[regime_id] = {
+                        'return': regime_return,
+                        'sharpe': regime_sharpe
+                    }
                 except Exception as e:
                     print(f"  Error calculating regime-specific metrics: {e}")
     
     # Store overall metrics for return
     for regime_id, params in regime_best_params.items():
         params['validation_score'] = val_metrics['sharpe_ratio']
+        
+        # Add validation metrics for this regime
+        if regime_id in validation_regime_metrics:
+            params['validation_regime_return'] = validation_regime_metrics[regime_id]['return']
+            params['validation_regime_sharpe'] = validation_regime_metrics[regime_id]['sharpe']
     
-    return regime_best_params
+    return regime_best_params, regime_studies
 
 def run_purged_walk_forward_optimization(df, config):
     """
-    Run purged walk-forward optimization for the strategy.
+    Run purged walk-forward optimization for the strategy using Optuna optimization.
+    Includes parameter sensitivity analysis.
     
     Parameters:
         df (DataFrame): Full dataset
@@ -527,7 +454,7 @@ def run_purged_walk_forward_optimization(df, config):
     Returns:
         dict: Overall results from purged walk-forward optimization
     """
-    print("\nRunning purged walk-forward optimization...")
+    print("\nRunning purged walk-forward optimization with Optuna...")
     start_time = time.time()
     
     # Get walk-forward configuration
@@ -555,6 +482,9 @@ def run_purged_walk_forward_optimization(df, config):
     all_section_results = []
     combined_test_results = pd.DataFrame()
     
+    # Store all Optuna studies for parameter sensitivity analysis
+    all_section_studies = {}
+    
     # Process each walk-forward period
     for i, (train_start, train_end, purge_start, val_start, val_end, test_start, test_end, embargo_end) in enumerate(periods):
         print(f"\n{'='*80}")
@@ -570,8 +500,8 @@ def run_purged_walk_forward_optimization(df, config):
         print(f"Validation data: {len(val_df)} points")
         print(f"Test data: {len(test_df)} points")
         
-        # Step 1: Optimize parameters for this section
-        section_params = optimize_section_parameters_purged(
+        # Step 1: Optimize parameters for this section with Optuna
+        regime_params, regime_studies = optimize_section_parameters_purged(
             train_df, 
             val_df, 
             test_start,
@@ -580,8 +510,11 @@ def run_purged_walk_forward_optimization(df, config):
             all_section_results
         )
         
+        # Store studies for this section
+        all_section_studies[i] = regime_studies
+        
         # Step 2: Evaluate on test data
-        section_results = evaluate_section_performance(test_df, section_params, config)
+        section_results = evaluate_section_performance(test_df, regime_params, config)
         
         # Store section results
         section_results.update({
@@ -593,13 +526,14 @@ def run_purged_walk_forward_optimization(df, config):
             'val_end': val_end,
             'test_start': test_start,
             'test_end': test_end,
-            'embargo_end': embargo_end
+            'embargo_end': embargo_end,
+            'regime_params': regime_params  # Store optimized parameters
         })
         
         all_section_results.append(section_results)
         
         # Apply strategy to test data to get equity curve
-        result_df = apply_enhanced_sma_strategy_regime_specific(test_df, section_params, config.get('STRATEGY_CONFIG', {}))
+        result_df = apply_enhanced_sma_strategy_regime_specific(test_df, regime_params, config.get('STRATEGY_CONFIG', {}))
         
         # Extract equity curve and combine with test period
         test_equity = result_df[['strategy_cumulative', 'buy_hold_cumulative']].copy()
@@ -658,6 +592,10 @@ def run_purged_walk_forward_optimization(df, config):
     # Plot combined equity curve
     plot_purged_walk_forward_results(combined_test_results, all_section_results, config)
     
+    # Perform global parameter sensitivity analysis
+    print("\nPerforming global parameter sensitivity analysis...")
+    sensitivity_results = track_parameter_performance(all_section_results, all_section_studies, config)
+    
     end_time = time.time()
     print(f"\nTotal execution time: {(end_time - start_time) / 60:.2f} minutes")
     
@@ -671,12 +609,680 @@ def run_purged_walk_forward_optimization(df, config):
         'section_results': all_section_results,
         'combined_equity': combined_test_results,
         'section_count': len(all_section_results),
-        'purged': True  # Mark as purged results
+        'purged': True,  # Mark as purged results
+        'parameter_importance': sensitivity_results.get('global_importance', {})
     }
     
     save_optimal_parameters_summary(all_section_results, overall_results, config)
+    
+    # Save final model and sensitivity results
+    save_final_model_with_sensitivity(overall_results, config)
 
     return overall_results
+
+def save_final_model_with_sensitivity(overall_results, config):
+    """
+    Save the final model along with parameter sensitivity analysis.
+    
+    Parameters:
+        overall_results (dict): Overall results from purged walk-forward optimization
+        config (dict): Full configuration
+    """
+    import os
+    import joblib
+    from datetime import datetime
+    
+    # Get output directory
+    results_dir = config.get('STRATEGY_CONFIG', {}).get('RESULTS_DIR', 'enhanced_sma_results')
+    if not os.path.exists(results_dir):
+        os.makedirs(results_dir)
+    
+    # Create timestamp for filename
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    # Get currency
+    currency = config.get('STRATEGY_CONFIG', {}).get('CURRENCY', 'BTC/USD')
+    currency_str = currency.replace("/", "_")
+    
+    # Create filename
+    filename = os.path.join(results_dir, f"final_model_with_sensitivity_{currency_str}_{timestamp}.pkl")
+    
+    # Prepare data to save
+    final_data = {
+        'overall_results': overall_results,
+        'timestamp': timestamp,
+        'currency': currency,
+        'parameter_importance': overall_results.get('parameter_importance', {})
+    }
+    
+    # Save to file
+    joblib.dump(final_data, filename)
+    print(f"Final model with sensitivity analysis saved to {filename}")
+    
+    # Create a simplified parameter importance CSV
+    csv_filename = os.path.join(results_dir, f"parameter_importance_{currency_str}_{timestamp}.csv")
+    
+    with open(csv_filename, 'w') as f:
+        f.write("Parameter,Importance\n")
+        for param, importance in sorted(overall_results.get('parameter_importance', {}).items(), 
+                                      key=lambda x: x[1], reverse=True):
+            f.write(f"{param},{importance:.6f}\n")
+    
+    print(f"Parameter importance CSV saved to {csv_filename}")
+
+def optimize_parameters_with_optuna(df, param_bounds, strategy_config, n_trials=100, regime_id=None):
+    """
+    Optimize parameters using Optuna for a specific regime.
+    Updated to use Optuna settings from config.
+    
+    Parameters:
+        df (DataFrame): Training data for the regime
+        param_bounds (dict): Dictionary of parameter bounds
+        strategy_config (dict): Strategy configuration
+        n_trials (int): Number of Optuna trials to run (will be overridden by config if specified)
+        regime_id (int, optional): Regime ID being optimized, for logging
+        
+    Returns:
+        dict: Best parameters found by Optuna
+        optuna.Study: Completed Optuna study for further analysis
+    """
+    # Get Optuna settings from config
+    cv_config = strategy_config.get('cross_validation', {}).get('parameter_testing', {})
+    optuna_config = cv_config.get('optuna_settings', {})
+    
+    # Override n_trials with config value if specified
+    config_n_trials = cv_config.get('n_trials')
+    if config_n_trials is not None:
+        n_trials = config_n_trials
+    
+    # Get timeout setting (optional)
+    timeout = cv_config.get('timeout', None)
+    
+    print(f"\nStarting Optuna optimization" + (f" for regime {regime_id}" if regime_id is not None else ""))
+    print(f"Running {n_trials} trials with Optuna" + (f" (timeout: {timeout}s)" if timeout else ""))
+    
+    # Extract parameter selection weights
+    param_selection = strategy_config.get('parameter_selection', {})
+    sharpe_weight = param_selection.get('sharpe_weight', 0.7)
+    return_weight = param_selection.get('return_weight', 0.3)
+    
+    # Create objective function for Optuna
+    def objective(trial):
+        # Build parameter set from trial suggestions
+        params = {}
+        
+        # Volatility parameters
+        if 'vol_method' in param_bounds:
+            methods = param_bounds['vol_method'][0]
+            params['vol_method'] = trial.suggest_categorical('vol_method', methods)
+            
+        if 'vol_lookback' in param_bounds:
+            min_val, max_val = param_bounds['vol_lookback']
+            params['vol_lookback'] = trial.suggest_int('vol_lookback', min_val, max_val)
+        
+        # SMA parameters
+        if 'short_window' in param_bounds and 'long_window' in param_bounds:
+            short_min, short_max = param_bounds['short_window']
+            long_min, long_max = param_bounds['long_window']
+            
+            # Ensure short_window < long_window by using relative suggestion
+            params['short_window'] = trial.suggest_int('short_window', short_min, short_max)
+            # Long window should be at least 1.5x the short window
+            params['long_window'] = trial.suggest_int('long_window', 
+                                                    max(long_min, int(params['short_window'] * 1.5)), 
+                                                    long_max)
+        
+        if 'min_holding_period' in param_bounds:
+            min_val, max_val = param_bounds['min_holding_period']
+            params['min_holding_period'] = trial.suggest_int('min_holding_period', min_val, max_val, step=6)
+        
+        if 'trend_strength_threshold' in param_bounds:
+            min_val, max_val = param_bounds['trend_strength_threshold']
+            params['trend_strength_threshold'] = trial.suggest_float('trend_strength_threshold', 
+                                                                  min_val, max_val, step=0.05)
+        
+        # Regime parameters
+        if 'regime_method' in param_bounds:
+            methods = param_bounds['regime_method'][0]
+            params['regime_method'] = trial.suggest_categorical('regime_method', methods)
+            
+        if 'n_regimes' in param_bounds:
+            min_val, max_val = param_bounds['n_regimes']
+            params['n_regimes'] = trial.suggest_int('n_regimes', min_val, max_val)
+            
+        if 'regime_stability' in param_bounds:
+            min_val, max_val = param_bounds['regime_stability']
+            params['regime_stability'] = trial.suggest_int('regime_stability', min_val, max_val, step=12)
+            
+        if 'regime_smoothing' in param_bounds:
+            min_val, max_val = param_bounds.get('regime_smoothing', (3, 21))
+            params['regime_smoothing'] = trial.suggest_int('regime_smoothing', min_val, max_val)
+        
+        # Risk management parameters
+        if 'target_vol' in param_bounds:
+            min_val, max_val = param_bounds['target_vol']
+            params['target_vol'] = trial.suggest_float('target_vol', min_val, max_val, step=0.05)
+            
+        if 'max_drawdown_exit' in param_bounds:
+            min_val, max_val = param_bounds['max_drawdown_exit']
+            params['max_drawdown_exit'] = trial.suggest_float('max_drawdown_exit', min_val, max_val, step=0.01)
+            
+        if 'profit_taking_threshold' in param_bounds:
+            min_val, max_val = param_bounds.get('profit_taking_threshold', (0.03, 0.3))
+            params['profit_taking_threshold'] = trial.suggest_float('profit_taking_threshold', 
+                                                                 min_val, max_val, step=0.01)
+            
+        if 'trailing_stop_activation' in param_bounds:
+            min_val, max_val = param_bounds.get('trailing_stop_activation', (0.01, 0.15))
+            params['trailing_stop_activation'] = trial.suggest_float('trailing_stop_activation', 
+                                                                  min_val, max_val, step=0.01)
+            
+        if 'trailing_stop_distance' in param_bounds:
+            min_val, max_val = param_bounds.get('trailing_stop_distance', (0.01, 0.1))
+            params['trailing_stop_distance'] = trial.suggest_float('trailing_stop_distance', 
+                                                                min_val, max_val, step=0.005)
+            
+        # Max/min position size
+        if 'max_position_size' in param_bounds:
+            min_val, max_val = param_bounds.get('max_position_size', (0.5, 1.0))
+            params['max_position_size'] = trial.suggest_float('max_position_size', min_val, max_val, step=0.1)
+            
+        if 'min_position_size' in param_bounds:
+            min_val, max_val = param_bounds.get('min_position_size', (0.0, 0.3))
+            params['min_position_size'] = trial.suggest_float('min_position_size', min_val, max_val, step=0.05)
+        
+        try:
+            # Test this parameter combination
+            metrics, _ = test_parameter_combination(df, params, strategy_config)
+            
+            # Calculate score based on weights
+            score = (sharpe_weight * metrics.get('sharpe_ratio', 0) + 
+                    return_weight * metrics.get('total_return', 0) * 10)
+            
+            # Penalize for extreme drawdowns
+            if metrics.get('max_drawdown', 0) < -0.3:
+                score *= (1 + metrics.get('max_drawdown', 0))  # Penalty factor
+                
+            # Store additional metrics for later analysis
+            # These are pruned by Optuna but helpful for reporting
+            trial.set_user_attr('sharpe_ratio', metrics.get('sharpe_ratio', 0))
+            trial.set_user_attr('total_return', metrics.get('total_return', 0))
+            trial.set_user_attr('max_drawdown', metrics.get('max_drawdown', 0))
+            trial.set_user_attr('sortino_ratio', metrics.get('sortino_ratio', 0))
+            trial.set_user_attr('calmar_ratio', metrics.get('calmar_ratio', 0))
+            
+            return score
+            
+        except Exception as e:
+            print(f"Error in Optuna trial: {e}")
+            # Return a very low score for failed trials
+            return -100.0
+    
+    # Create Optuna study
+    study_name = f"regime_optimization_{regime_id}" if regime_id is not None else "regime_optimization"
+    
+    # Create pruner based on config
+    pruner_type = optuna_config.get('pruner', 'median')
+    n_startup_trials = optuna_config.get('n_startup_trials', 10)
+    n_warmup_steps = optuna_config.get('n_warmup_steps', 5)
+    
+    if pruner_type == 'median':
+        pruner = optuna.pruners.MedianPruner(
+            n_startup_trials=n_startup_trials, 
+            n_warmup_steps=n_warmup_steps, 
+            interval_steps=1
+        )
+    elif pruner_type == 'percentile':
+        pruner = optuna.pruners.PercentilePruner(
+            percentile=25.0,
+            n_startup_trials=n_startup_trials,
+            n_warmup_steps=n_warmup_steps
+        )
+    elif pruner_type == 'hyperband':
+        pruner = optuna.pruners.HyperbandPruner(
+            min_resource=n_warmup_steps,
+            max_resource=100,
+            reduction_factor=3
+        )
+    elif pruner_type == 'none':
+        pruner = optuna.pruners.NopPruner()
+    else:
+        print(f"Unknown pruner type '{pruner_type}', using MedianPruner")
+        pruner = optuna.pruners.MedianPruner(
+            n_startup_trials=n_startup_trials, 
+            n_warmup_steps=n_warmup_steps
+        )
+    
+    # Create study with configured pruner
+    study = optuna.create_study(
+        study_name=study_name,
+        direction="maximize",
+        pruner=pruner
+    )
+    
+    # Get progress bar setting
+    show_progress_bar = optuna_config.get('show_progress_bar', True)
+    
+    # Run optimization with timeout if specified
+    study.optimize(
+        objective, 
+        n_trials=n_trials, 
+        timeout=timeout,
+        show_progress_bar=show_progress_bar
+    )
+    
+    # Get best parameters
+    best_params = study.best_params
+    best_value = study.best_value
+    
+    # Print best parameters
+    print(f"\nBest Optuna parameters" + (f" for regime {regime_id}" if regime_id is not None else "") + ":")
+    print(f"Optimization score: {best_value:.4f}")
+    for key, value in best_params.items():
+        print(f"  {key}: {value}")
+    
+    # Convert Optuna params to our parameter format
+    final_params = {}
+    for param_name, param_value in best_params.items():
+        final_params[param_name] = param_value
+    
+    return final_params, study
+
+def analyze_parameter_importance(study, config, output_dir=None, regime_id=None):
+    """
+    Analyze parameter importance from an Optuna study.
+    
+    Parameters:
+        study (optuna.Study): Completed Optuna study
+        config (dict): Strategy configuration
+        output_dir (str, optional): Directory to save plots, if None uses config.RESULTS_DIR
+        regime_id (int, optional): Regime ID for file naming
+        
+    Returns:
+        dict: Dictionary of parameter importance scores
+    """
+    if output_dir is None:
+        output_dir = config.get('STRATEGY_CONFIG', {}).get('RESULTS_DIR', 'enhanced_sma_results')
+    
+    # Ensure directory exists
+    import os
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    
+    # Create timestamp for filenames
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    regime_suffix = f"_regime_{regime_id}" if regime_id is not None else ""
+    
+    try:
+        # Use Optuna's built-in parameter importance
+        param_importance = get_param_importances(study)
+        
+        # Create formatted param importance
+        formatted_importance = {}
+        for param_name, importance in param_importance.items():
+            formatted_importance[param_name] = importance
+        
+        # Plot parameter importances
+        fig = plot_param_importances(study)
+        filename = os.path.join(output_dir, f"param_importance{regime_suffix}_{timestamp}.png")
+        fig.write_image(filename)
+        print(f"Parameter importance plot saved to {filename}")
+        
+        # Plot optimization history
+        fig = plot_optimization_history(study)
+        filename = os.path.join(output_dir, f"optimization_history{regime_suffix}_{timestamp}.png")
+        fig.write_image(filename)
+        print(f"Optimization history saved to {filename}")
+        
+        # Try to plot contour for most important parameters
+        if len(param_importance) >= 2:
+            top_params = list(param_importance.keys())[:2]
+            try:
+                fig = plot_contour(study, params=top_params)
+                filename = os.path.join(output_dir, f"contour_plot{regime_suffix}_{timestamp}.png")
+                fig.write_image(filename)
+                print(f"Contour plot saved to {filename}")
+            except Exception as e:
+                print(f"Could not create contour plot: {e}")
+        
+        return formatted_importance
+    
+    except Exception as e:
+        print(f"Error in parameter importance analysis: {e}")
+        
+        # Fall back to custom importance analysis
+        return calculate_custom_parameter_importance(study, output_dir, regime_id)
+
+def calculate_custom_parameter_importance(study, output_dir, regime_id=None):
+    """
+    Calculate parameter importance using a custom approach when Optuna's built-in
+    method fails (e.g., with too few trials or strongly correlated parameters).
+    
+    Parameters:
+        study (optuna.Study): Completed Optuna study
+        output_dir (str): Directory to save plots
+        regime_id (int, optional): Regime ID for file naming
+        
+    Returns:
+        dict: Dictionary of parameter importance scores
+    """
+    # Create timestamp for filenames
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    regime_suffix = f"_regime_{regime_id}" if regime_id is not None else ""
+    
+    # Extract trials data into DataFrame
+    trials_data = []
+    for trial in study.trials:
+        if trial.state == optuna.trial.TrialState.COMPLETE:
+            # Get parameters
+            params = trial.params.copy()
+            
+            # Add trial value (optimization score)
+            params['score'] = trial.value
+            
+            # Add metrics if available
+            for metric in ['sharpe_ratio', 'total_return', 'max_drawdown', 'sortino_ratio', 'calmar_ratio']:
+                if metric in trial.user_attrs:
+                    params[metric] = trial.user_attrs[metric]
+            
+            trials_data.append(params)
+    
+    if not trials_data:
+        print("No complete trials found for importance analysis")
+        return {}
+    
+    # Convert to DataFrame
+    df = pd.DataFrame(trials_data)
+    
+    # Ensure we have a score column
+    if 'score' not in df.columns:
+        print("No score column found in trials data")
+        return {}
+    
+    # Remove non-parameter columns for correlation analysis
+    metric_columns = ['score', 'sharpe_ratio', 'total_return', 'max_drawdown', 'sortino_ratio', 'calmar_ratio']
+    param_columns = [col for col in df.columns if col not in metric_columns]
+    
+    # Calculate correlation with score
+    correlations = {}
+    for param in param_columns:
+        # Skip categorical parameters
+        if df[param].dtype == 'object':
+            continue
+        
+        corr = df[param].corr(df['score'])
+        correlations[param] = abs(corr)  # Use absolute correlation as importance
+    
+    # Try to use RandomForest for feature importance
+    rf_importances = {}
+    try:
+        # Prepare data
+        X = df[param_columns]
+        y = df['score']
+        
+        # Handle categorical features
+        X_processed = pd.get_dummies(X, drop_first=True)
+        
+        # Normalize features
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X_processed)
+        
+        # Train RandomForest
+        rf = RandomForestRegressor(n_estimators=100, random_state=42)
+        rf.fit(X_scaled, y)
+        
+        # Get feature importances
+        feature_importances = rf.feature_importances_
+        
+        # Map back to original parameter names
+        feature_names = X_processed.columns
+        for name, importance in zip(feature_names, feature_importances):
+            # Extract base parameter name from dummy variables
+            base_param = name.split('_')[0] if '_' in name else name
+            if base_param not in rf_importances:
+                rf_importances[base_param] = 0
+            rf_importances[base_param] += importance
+    except Exception as e:
+        print(f"RandomForest importance calculation failed: {e}")
+    
+    # Combine correlation and RF importances
+    combined_importances = {}
+    for param in set(list(correlations.keys()) + list(rf_importances.keys())):
+        # Get importances, defaulting to 0 if not available
+        corr_imp = correlations.get(param, 0)
+        rf_imp = rf_importances.get(param, 0)
+        
+        # Average the importances, with more weight to RF if available
+        if param in rf_importances:
+            combined_importances[param] = 0.3 * corr_imp + 0.7 * rf_imp
+        else:
+            combined_importances[param] = corr_imp
+    
+    # Normalize importances to sum to 1
+    total_importance = sum(combined_importances.values())
+    if total_importance > 0:
+        for param in combined_importances:
+            combined_importances[param] /= total_importance
+    
+    # Generate plots
+    try:
+        # 1. Correlation heatmap
+        plt.figure(figsize=(12, 10))
+        correlation_matrix = df[param_columns + ['score']].corr()
+        sns.heatmap(correlation_matrix, annot=True, cmap='coolwarm', fmt=".2f", linewidths=0.5)
+        plt.title('Parameter Correlation Matrix')
+        plt.tight_layout()
+        filename = os.path.join(output_dir, f"correlation_heatmap{regime_suffix}_{timestamp}.png")
+        plt.savefig(filename, dpi=300, bbox_inches='tight')
+        plt.close()
+        print(f"Correlation heatmap saved to {filename}")
+        
+        # 2. Parameter importance bar chart
+        plt.figure(figsize=(12, 8))
+        
+        # Sort importances
+        sorted_importances = sorted(combined_importances.items(), key=lambda x: x[1], reverse=True)
+        params = [x[0] for x in sorted_importances]
+        importances = [x[1] for x in sorted_importances]
+        
+        # Plot
+        sns.barplot(x=importances, y=params, palette='viridis')
+        plt.title('Parameter Importance')
+        plt.xlabel('Importance Score')
+        plt.ylabel('Parameter')
+        plt.tight_layout()
+        filename = os.path.join(output_dir, f"custom_param_importance{regime_suffix}_{timestamp}.png")
+        plt.savefig(filename, dpi=300, bbox_inches='tight')
+        plt.close()
+        print(f"Custom parameter importance plot saved to {filename}")
+        
+    except Exception as e:
+        print(f"Error generating importance plots: {e}")
+    
+    return combined_importances
+
+def track_parameter_performance(section_results, all_regime_studies, config):
+    """
+    Create a comprehensive parameter performance tracking database and analyze
+    which parameters consistently lead to good performance across different regimes.
+    
+    Parameters:
+        section_results (list): Results from all sections
+        all_regime_studies (dict): Dictionary of completed Optuna studies by section and regime
+        config (dict): Strategy configuration
+        
+    Returns:
+        dict: Analysis results including global parameter importance
+    """
+    # Ensure we have the output directory
+    results_dir = config.get('STRATEGY_CONFIG', {}).get('RESULTS_DIR', 'enhanced_sma_results')
+    import os
+    if not os.path.exists(results_dir):
+        os.makedirs(results_dir)
+    
+    # Create timestamp for filenames
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    # Initialize data collection
+    all_trials_data = []
+    
+    # Process all studies
+    for section_idx, regime_studies in all_regime_studies.items():
+        for regime_id, study in regime_studies.items():
+            # Extract data from this study
+            for trial in study.trials:
+                if trial.state != optuna.trial.TrialState.COMPLETE:
+                    continue
+                
+                # Get trial data
+                trial_data = {
+                    'section': section_idx,
+                    'regime': regime_id,
+                    'trial': trial.number,
+                    'score': trial.value
+                }
+                
+                # Add parameters
+                for param_name, param_value in trial.params.items():
+                    trial_data[param_name] = param_value
+                
+                # Add user attributes (metrics)
+                for attr_name, attr_value in trial.user_attrs.items():
+                    trial_data[attr_name] = attr_value
+                
+                all_trials_data.append(trial_data)
+    
+    # Create DataFrame
+    if not all_trials_data:
+        print("No trial data to analyze")
+        return {}
+    
+    trials_df = pd.DataFrame(all_trials_data)
+    
+    # Save the complete trial database
+    trials_csv = os.path.join(results_dir, f"all_trials_data_{timestamp}.csv")
+    trials_df.to_csv(trials_csv, index=False)
+    print(f"Complete trials database saved to {trials_csv}")
+    
+    # Analyze global parameter importance
+    global_importance = {}
+    
+    # Extract parameter columns (exclude metadata and metrics)
+    meta_columns = ['section', 'regime', 'trial', 'score', 'sharpe_ratio', 
+                    'total_return', 'max_drawdown', 'sortino_ratio', 'calmar_ratio']
+    param_columns = [col for col in trials_df.columns if col not in meta_columns]
+    
+    try:
+        # Prepare data for ML-based importance
+        X = trials_df[param_columns]
+        y = trials_df['score']
+        
+        # Handle categorical features
+        X_processed = pd.get_dummies(X, drop_first=True)
+        
+        # Normalize features
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X_processed)
+        
+        # 1. Linear regression for coefficient-based importance
+        lr = LinearRegression()
+        lr.fit(X_scaled, y)
+        
+        lr_importances = {}
+        for i, col in enumerate(X_processed.columns):
+            base_param = col.split('_')[0] if '_' in col else col
+            if base_param not in lr_importances:
+                lr_importances[base_param] = 0
+            lr_importances[base_param] += abs(lr.coef_[i])
+        
+        # 2. RandomForest for feature importance
+        rf = RandomForestRegressor(n_estimators=100, random_state=42)
+        rf.fit(X_scaled, y)
+        
+        rf_importances = {}
+        for i, col in enumerate(X_processed.columns):
+            base_param = col.split('_')[0] if '_' in col else col
+            if base_param not in rf_importances:
+                rf_importances[base_param] = 0
+            rf_importances[base_param] += rf.feature_importances_[i]
+        
+        # 3. Correlation-based importance
+        corr_importances = {}
+        for param in param_columns:
+            if trials_df[param].dtype != 'object':  # Skip categorical
+                corr = abs(trials_df[param].corr(trials_df['score']))
+                if not np.isnan(corr):
+                    corr_importances[param] = corr
+        
+        # Combine importance measures
+        for param in set(list(lr_importances.keys()) + list(rf_importances.keys()) + list(corr_importances.keys())):
+            lr_imp = lr_importances.get(param, 0)
+            rf_imp = rf_importances.get(param, 0)
+            corr_imp = corr_importances.get(param, 0)
+            
+            # Weighted combination
+            global_importance[param] = 0.2 * lr_imp + 0.5 * rf_imp + 0.3 * corr_imp
+        
+        # Normalize to sum to 1
+        total_importance = sum(global_importance.values())
+        if total_importance > 0:
+            for param in global_importance:
+                global_importance[param] /= total_importance
+        
+        # Plot global parameter importance
+        plt.figure(figsize=(12, 8))
+        
+        # Sort importances
+        sorted_importances = sorted(global_importance.items(), key=lambda x: x[1], reverse=True)
+        params = [x[0] for x in sorted_importances]
+        importances = [x[1] for x in sorted_importances]
+        
+        # Plot
+        sns.barplot(x=importances, y=params, palette='viridis')
+        plt.title('Global Parameter Importance Across All Regimes and Sections')
+        plt.xlabel('Importance Score')
+        plt.ylabel('Parameter')
+        plt.tight_layout()
+        filename = os.path.join(results_dir, f"global_param_importance_{timestamp}.png")
+        plt.savefig(filename, dpi=300, bbox_inches='tight')
+        plt.close()
+        print(f"Global parameter importance plot saved to {filename}")
+        
+        # Create a text summary of parameter rankings
+        with open(os.path.join(results_dir, f"parameter_importance_summary_{timestamp}.txt"), 'w') as f:
+            f.write("PARAMETER IMPORTANCE SUMMARY\n")
+            f.write("===========================\n\n")
+            f.write("Parameters ranked by global importance:\n")
+            for param, importance in sorted_importances:
+                f.write(f"{param}: {importance:.4f}\n")
+            
+            f.write("\n\nRecommended focus parameters (top 30%):\n")
+            top_n = max(1, int(len(sorted_importances) * 0.3))
+            for param, importance in sorted_importances[:top_n]:
+                f.write(f"{param}: {importance:.4f}\n")
+            
+            f.write("\n\nLess important parameters (bottom 30%):\n")
+            for param, importance in sorted_importances[-top_n:]:
+                f.write(f"{param}: {importance:.4f}\n")
+        
+        # Create a correlation matrix between parameters
+        plt.figure(figsize=(16, 14))
+        param_correlation = trials_df[param_columns].corr()
+        sns.heatmap(param_correlation, annot=True, cmap='coolwarm', fmt=".2f", linewidths=0.5)
+        plt.title('Parameter Correlation Matrix (Across All Trials)')
+        plt.tight_layout()
+        filename = os.path.join(results_dir, f"parameter_correlation_{timestamp}.png")
+        plt.savefig(filename, dpi=300, bbox_inches='tight')
+        plt.close()
+        print(f"Parameter correlation matrix saved to {filename}")
+        
+    except Exception as e:
+        print(f"Error in global parameter importance analysis: {e}")
+    
+    return {
+        'global_importance': global_importance,
+        'trials_df': trials_df
+    }
 
 def generate_parameter_set_with_learning(previous_sections, config, section_index, target_regime=None):
     """

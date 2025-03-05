@@ -34,7 +34,11 @@ def main():
         "arch",      # For GARCH volatility models
         "joblib",    # For model serialization
         "psycopg2-binary",  # For PostgreSQL database access
-        "numba",
+        "numba",     # For accelerated numerical calculations
+        "optuna",    # For parameter optimization
+        "plotly",    # For interactive visualizations and parameter importance plots
+        "seaborn",   # For enhanced statistical visualizations
+        "tqdm",      # For progress bars during optimization (optional but useful)
     ]
     
     # Check and install each package

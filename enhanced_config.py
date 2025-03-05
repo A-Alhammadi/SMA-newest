@@ -122,34 +122,50 @@ STRATEGY_CONFIG = {
     
     # Cross-validation settings - Modified for Walk-Forward compatibility
     'cross_validation': {
-        'n_splits': 5,  # Number of time series cross-validation splits
-        'min_train_size': 90,  # Minimum training size in days
-        'step_forward': 30,  # Step forward size in days for expanding window
-        'validation_ratio': 0.3,  # Portion of training data to use for validation
         'parameter_testing': {
-            'method': 'greedy',  # 'grid', 'random', or 'greedy' optimization approach
-            'n_random_combinations': 50000,  # Reduced number of random combinations for walk-forward
-            'max_combinations': 500000,  # Maximum number of combinations to test (limits search space)
+            'method': 'optuna',  # Changed from 'greedy' to 'optuna'
+            'n_trials': 100,  # Number of Optuna trials per regime optimization
+            'timeout': 3600,  # Maximum seconds per optimization (optional)
+            'n_random_combinations': 50000,  # Still used for fallback if Optuna fails
+            'max_combinations': 500000,  # Maximum number of combinations for fallback
             'optimize_risk_params': True,  # Whether to optimize risk params or use defaults
             'optimize_regime_params': True,  # Whether to optimize regime detection parameters
             'optimize_sma_params': True,  # Whether to optimize SMA parameters
             'advanced_mode': True,  # Set to True to enable all parameter combinations
-            'early_stop_threshold': 1000,  # Reduced non-improving combinations before stopping for walk-forward
-            'min_combinations': 200,        # Minimum combinations to test regardless of improvement
-            'print_frequency': 100,          # How often to print progress during optimization
-            'adaptive_sampling': True,      # Use adaptive sampling for walk-forward
-            'use_simplified_scoring': True  # Use simplified scoring (Sharpe + Returns)
+            'early_stop_threshold': 1000,  # For fallback method
+            'min_combinations': 200,  # Minimum combinations for fallback method
+            'print_frequency': 100,  # How often to print progress during optimization
+            'adaptive_sampling': True,  # Use adaptive sampling for walk-forward
+            'use_simplified_scoring': True,  # Use simplified scoring (Sharpe + Returns)
+            'optuna_settings': {
+                'pruner': 'median',  # Pruner type: 'median', 'percentile', 'hyperband', 'none'
+                'n_startup_trials': 10,  # Number of random trials before pruning begins
+                'n_warmup_steps': 5,  # Number of steps before pruning can happen in a trial
+                'show_progress_bar': True  # Show Optuna progress bar during optimization
+            }
         }
     },
     
     # Parameter selection settings - Simplified for Walk-Forward
     'parameter_selection': {
-        'sharpe_weight': 0.70,            # Higher weight for Sharpe ratio
-        'return_weight': 0.30,            # Lower weight for returns
-        'consistency_weight': 0.20,       # Weight for consistency across regimes
-        'stability_weight': 0.25,         # Reduced weight for parameter stability vs. performance
-        'sortino_weight': 0.0,            # Removed from scoring
-        'calmar_weight': 0.0              # Removed from scoring
+        'sharpe_weight': 0.70,  # Higher weight for Sharpe ratio
+        'return_weight': 0.30,  # Lower weight for returns
+        'consistency_weight': 0.20,  # Weight for consistency across regimes
+        'stability_weight': 0.25,  # Reduced weight for parameter stability vs. performance
+        'sortino_weight': 0.0,  # Removed from scoring
+        'calmar_weight': 0.0  # Removed from scoring
+    },
+    
+    # Parameter sensitivity analysis settings - NEW
+    'parameter_sensitivity': {
+        'enabled': True,  # Enable parameter sensitivity analysis
+        'top_n_parameters': 10,  # Number of top parameters to analyze in detail
+        'importance_methods': ['correlation', 'random_forest', 'linear_regression'],  # Methods for calculating importance
+        'create_visualizations': True,  # Create visualizations for parameter importance
+        'save_trial_database': True,  # Save complete database of all trials
+        'correlation_weight': 0.3,  # Weight for correlation-based importance
+        'random_forest_weight': 0.5,  # Weight for random forest-based importance
+        'linear_regression_weight': 0.2  # Weight for linear regression-based importance
     }
 }
 
