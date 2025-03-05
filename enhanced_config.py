@@ -78,7 +78,7 @@ STRATEGY_CONFIG = {
     # Regime detection settings
     'regime_detection': {
         'methods': ['hmm'],  #'kmeans', 'quantile', 'hmm' Added more detection methods
-        'n_regimes': [2, 3, 4],  # Testing different number of regimes
+        'n_regimes': [2],  # Testing different number of regimes
         'quantile_thresholds': [
             [0.33, 0.67],       # For 3 regimes (standard)
             [0.25, 0.5, 0.75],  # For 4 regimes (quartiles)
@@ -134,7 +134,7 @@ STRATEGY_CONFIG = {
             'optimize_regime_params': True,  # Whether to optimize regime detection parameters
             'optimize_sma_params': True,  # Whether to optimize SMA parameters
             'advanced_mode': True,  # Set to True to enable all parameter combinations
-            'early_stop_threshold': 7500,  # Reduced non-improving combinations before stopping for walk-forward
+            'early_stop_threshold': 1000,  # Reduced non-improving combinations before stopping for walk-forward
             'min_combinations': 200,        # Minimum combinations to test regardless of improvement
             'print_frequency': 100,          # How often to print progress during optimization
             'adaptive_sampling': True,      # Use adaptive sampling for walk-forward

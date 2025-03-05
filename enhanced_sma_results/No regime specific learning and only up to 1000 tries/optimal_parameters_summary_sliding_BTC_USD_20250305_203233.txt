@@ -1,0 +1,911 @@
+================================================================================
+PURGED WALK-FORWARD OPTIMIZATION SUMMARY FOR BTC/USD (SLIDING WINDOW)
+Generated on: 2025-03-05 20:32:33
+================================================================================
+
+WINDOW CONFIGURATION
+--------------------------------------------------
+Window Type: Sliding
+Sliding Window Size: 365 days
+Step Size: 90 days
+Validation Period: 45 days
+Test Period: 90 days
+Purge Period: 30 days
+Embargo Period: 30 days
+
+OVERALL PERFORMANCE
+--------------------------------------------------
+Total Return: 1.3948%
+Buy & Hold Return: 38.3673%
+Outperformance: -36.9724%
+Overall Sharpe Ratio: 0.0144
+Overall Max Drawdown: -11.1693%
+Total Sections: 16
+
+SECTION-BY-SECTION RESULTS
+--------------------------------------------------
+
+SECTION 1
+------------------------------
+Period: 2020-01-01 to 2021-05-15
+Test Period: 2021-02-14 to 2021-05-15
+
+Performance Metrics:
+  Return: -4.9681%
+  Sharpe Ratio: -4.1154
+  Max Drawdown: -6.2433%
+  Win Rate: 43.3663%
+  Buy & Hold Return: 3.8637%
+  Outperformance: -8.8318%
+
+Optimal Parameters:
+  REGIME 0
+    SMA Parameters:
+      Short Window: 13
+      Long Window: 55
+      Min Holding Period: 24
+      Trend Strength Threshold: 0.3
+    Volatility Parameters:
+      Method: parkinson
+      Lookback Period: 20
+    Regime Parameters:
+      Method: hmm
+      Stability Period: 0
+    Risk Management Parameters:
+      Target Volatility: 0.15
+      Max Drawdown Exit: 0.15
+      Profit Taking Threshold: 0.05
+      Trailing Stop Activation: 0.03
+      Trailing Stop Distance: 0.02
+  REGIME 1
+    SMA Parameters:
+      Short Window: 13
+      Long Window: 55
+      Min Holding Period: 24
+      Trend Strength Threshold: 0.3
+    Volatility Parameters:
+      Method: parkinson
+      Lookback Period: 20
+    Regime Parameters:
+      Method: hmm
+      Stability Period: 0
+    Risk Management Parameters:
+      Target Volatility: 0.15
+      Max Drawdown Exit: 0.15
+      Profit Taking Threshold: 0.05
+      Trailing Stop Activation: 0.03
+      Trailing Stop Distance: 0.02
+
+------------------------------
+
+SECTION 2
+------------------------------
+Period: 2020-03-31 to 2021-08-13
+Test Period: 2021-05-15 to 2021-08-13
+
+Performance Metrics:
+  Return: -5.4702%
+  Sharpe Ratio: -3.0726
+  Max Drawdown: -8.1983%
+  Win Rate: 45.0249%
+  Buy & Hold Return: -10.0429%
+  Outperformance: 4.5728%
+
+Optimal Parameters:
+  REGIME 0
+    SMA Parameters:
+      Short Window: 13
+      Long Window: 167
+      Min Holding Period: 6
+      Trend Strength Threshold: 0.3
+    Volatility Parameters:
+      Method: parkinson
+      Lookback Period: 20
+    Regime Parameters:
+      Method: hmm
+      Stability Period: 12
+    Risk Management Parameters:
+      Target Volatility: N/A
+      Max Drawdown Exit: N/A
+      Profit Taking Threshold: N/A
+      Trailing Stop Activation: N/A
+      Trailing Stop Distance: N/A
+  REGIME 1
+    SMA Parameters:
+      Short Window: 8
+      Long Window: 21
+      Min Holding Period: 6
+      Trend Strength Threshold: 0.1
+    Volatility Parameters:
+      Method: parkinson
+      Lookback Period: 8
+    Regime Parameters:
+      Method: hmm
+      Stability Period: 36
+    Risk Management Parameters:
+      Target Volatility: N/A
+      Max Drawdown Exit: N/A
+      Profit Taking Threshold: N/A
+      Trailing Stop Activation: N/A
+      Trailing Stop Distance: N/A
+
+------------------------------
+
+SECTION 3
+------------------------------
+Period: 2020-06-29 to 2021-11-11
+Test Period: 2021-08-13 to 2021-11-11
+
+Performance Metrics:
+  Return: -0.6663%
+  Sharpe Ratio: -0.4775
+  Max Drawdown: -2.5768%
+  Win Rate: 44.3678%
+  Buy & Hold Return: 45.9249%
+  Outperformance: -46.5912%
+
+Optimal Parameters:
+  REGIME 0
+    SMA Parameters:
+      Short Window: 3
+      Long Window: 167
+      Min Holding Period: 72
+      Trend Strength Threshold: 0.6
+    Volatility Parameters:
+      Method: parkinson
+      Lookback Period: 20
+    Regime Parameters:
+      Method: hmm
+      Stability Period: 24
+    Risk Management Parameters:
+      Target Volatility: N/A
+      Max Drawdown Exit: N/A
+      Profit Taking Threshold: N/A
+      Trailing Stop Activation: N/A
+      Trailing Stop Distance: N/A
+  REGIME 1
+    SMA Parameters:
+      Short Window: 4
+      Long Window: 24
+      Min Holding Period: 12
+      Trend Strength Threshold: 0.1
+    Volatility Parameters:
+      Method: parkinson
+      Lookback Period: 20
+    Regime Parameters:
+      Method: hmm
+      Stability Period: 24
+    Risk Management Parameters:
+      Target Volatility: N/A
+      Max Drawdown Exit: N/A
+      Profit Taking Threshold: N/A
+      Trailing Stop Activation: N/A
+      Trailing Stop Distance: N/A
+
+------------------------------
+
+SECTION 4
+------------------------------
+Period: 2020-09-27 to 2022-02-09
+Test Period: 2021-11-11 to 2022-02-09
+
+Performance Metrics:
+  Return: -2.2070%
+  Sharpe Ratio: -1.5084
+  Max Drawdown: -4.2946%
+  Win Rate: 49.7159%
+  Buy & Hold Return: -31.8188%
+  Outperformance: 29.6118%
+
+Optimal Parameters:
+  REGIME 0
+    SMA Parameters:
+      Short Window: 5
+      Long Window: 300
+      Min Holding Period: 6
+      Trend Strength Threshold: 0.1
+    Volatility Parameters:
+      Method: parkinson
+      Lookback Period: 13
+    Regime Parameters:
+      Method: hmm
+      Stability Period: 96
+    Risk Management Parameters:
+      Target Volatility: N/A
+      Max Drawdown Exit: N/A
+      Profit Taking Threshold: N/A
+      Trailing Stop Activation: N/A
+      Trailing Stop Distance: N/A
+  REGIME 1
+    SMA Parameters:
+      Short Window: 21
+      Long Window: 34
+      Min Holding Period: 24
+      Trend Strength Threshold: 0.1
+    Volatility Parameters:
+      Method: parkinson
+      Lookback Period: 13
+    Regime Parameters:
+      Method: hmm
+      Stability Period: 24
+    Risk Management Parameters:
+      Target Volatility: N/A
+      Max Drawdown Exit: N/A
+      Profit Taking Threshold: N/A
+      Trailing Stop Activation: N/A
+      Trailing Stop Distance: N/A
+
+------------------------------
+
+SECTION 5
+------------------------------
+Period: 2020-12-26 to 2022-05-10
+Test Period: 2022-02-09 to 2022-05-10
+
+Performance Metrics:
+  Return: 0.4003%
+  Sharpe Ratio: -1.1535
+  Max Drawdown: -5.9824%
+  Win Rate: 45.3629%
+  Buy & Hold Return: -30.5304%
+  Outperformance: 30.9307%
+
+Optimal Parameters:
+  REGIME 0
+    SMA Parameters:
+      Short Window: 5
+      Long Window: 120
+      Min Holding Period: 48
+      Trend Strength Threshold: 0.3
+    Volatility Parameters:
+      Method: parkinson
+      Lookback Period: 8
+    Regime Parameters:
+      Method: hmm
+      Stability Period: 96
+    Risk Management Parameters:
+      Target Volatility: N/A
+      Max Drawdown Exit: N/A
+      Profit Taking Threshold: N/A
+      Trailing Stop Activation: N/A
+      Trailing Stop Distance: N/A
+  REGIME 1
+    SMA Parameters:
+      Short Window: 8
+      Long Window: 120
+      Min Holding Period: 6
+      Trend Strength Threshold: 0.3
+    Volatility Parameters:
+      Method: parkinson
+      Lookback Period: 13
+    Regime Parameters:
+      Method: hmm
+      Stability Period: 0
+    Risk Management Parameters:
+      Target Volatility: N/A
+      Max Drawdown Exit: N/A
+      Profit Taking Threshold: N/A
+      Trailing Stop Activation: N/A
+      Trailing Stop Distance: N/A
+
+------------------------------
+
+SECTION 6
+------------------------------
+Period: 2021-03-26 to 2022-08-08
+Test Period: 2022-05-10 to 2022-08-08
+
+Performance Metrics:
+  Return: 1.0732%
+  Sharpe Ratio: -0.1557
+  Max Drawdown: -2.9706%
+  Win Rate: 47.5472%
+  Buy & Hold Return: -24.3892%
+  Outperformance: 25.4624%
+
+Optimal Parameters:
+  REGIME 0
+    SMA Parameters:
+      Short Window: 3
+      Long Window: 55
+      Min Holding Period: 48
+      Trend Strength Threshold: 0.3
+    Volatility Parameters:
+      Method: parkinson
+      Lookback Period: 34
+    Regime Parameters:
+      Method: hmm
+      Stability Period: 120
+    Risk Management Parameters:
+      Target Volatility: N/A
+      Max Drawdown Exit: N/A
+      Profit Taking Threshold: N/A
+      Trailing Stop Activation: N/A
+      Trailing Stop Distance: N/A
+  REGIME 1
+    SMA Parameters:
+      Short Window: 3
+      Long Window: 200
+      Min Holding Period: 24
+      Trend Strength Threshold: 0.3
+    Volatility Parameters:
+      Method: parkinson
+      Lookback Period: 34
+    Regime Parameters:
+      Method: hmm
+      Stability Period: 120
+    Risk Management Parameters:
+      Target Volatility: N/A
+      Max Drawdown Exit: N/A
+      Profit Taking Threshold: N/A
+      Trailing Stop Activation: N/A
+      Trailing Stop Distance: N/A
+
+------------------------------
+
+SECTION 7
+------------------------------
+Period: 2021-06-24 to 2022-11-06
+Test Period: 2022-08-08 to 2022-11-06
+
+Performance Metrics:
+  Return: 2.5121%
+  Sharpe Ratio: 0.2467
+  Max Drawdown: -3.9561%
+  Win Rate: 46.8817%
+  Buy & Hold Return: -8.3407%
+  Outperformance: 10.8528%
+
+Optimal Parameters:
+  REGIME 0
+    SMA Parameters:
+      Short Window: 3
+      Long Window: 240
+      Min Holding Period: 72
+      Trend Strength Threshold: 0.4
+    Volatility Parameters:
+      Method: parkinson
+      Lookback Period: 34
+    Regime Parameters:
+      Method: hmm
+      Stability Period: 24
+    Risk Management Parameters:
+      Target Volatility: N/A
+      Max Drawdown Exit: N/A
+      Profit Taking Threshold: N/A
+      Trailing Stop Activation: N/A
+      Trailing Stop Distance: N/A
+  REGIME 1
+    SMA Parameters:
+      Short Window: 8
+      Long Window: 200
+      Min Holding Period: 6
+      Trend Strength Threshold: 0.1
+    Volatility Parameters:
+      Method: parkinson
+      Lookback Period: 20
+    Regime Parameters:
+      Method: hmm
+      Stability Period: 24
+    Risk Management Parameters:
+      Target Volatility: N/A
+      Max Drawdown Exit: N/A
+      Profit Taking Threshold: N/A
+      Trailing Stop Activation: N/A
+      Trailing Stop Distance: N/A
+
+------------------------------
+
+SECTION 8
+------------------------------
+Period: 2021-09-22 to 2023-02-04
+Test Period: 2022-11-06 to 2023-02-04
+
+Performance Metrics:
+  Return: -2.0528%
+  Sharpe Ratio: -4.7991
+  Max Drawdown: -2.7558%
+  Win Rate: 41.0526%
+  Buy & Hold Return: 9.7665%
+  Outperformance: -11.8193%
+
+Optimal Parameters:
+  REGIME 0
+    SMA Parameters:
+      Short Window: 4
+      Long Window: 300
+      Min Holding Period: 48
+      Trend Strength Threshold: 0.3
+    Volatility Parameters:
+      Method: parkinson
+      Lookback Period: 20
+    Regime Parameters:
+      Method: hmm
+      Stability Period: 72
+    Risk Management Parameters:
+      Target Volatility: N/A
+      Max Drawdown Exit: N/A
+      Profit Taking Threshold: N/A
+      Trailing Stop Activation: N/A
+      Trailing Stop Distance: N/A
+  REGIME 1
+    SMA Parameters:
+      Short Window: 3
+      Long Window: 34
+      Min Holding Period: 48
+      Trend Strength Threshold: 0.7
+    Volatility Parameters:
+      Method: parkinson
+      Lookback Period: 34
+    Regime Parameters:
+      Method: hmm
+      Stability Period: 12
+    Risk Management Parameters:
+      Target Volatility: N/A
+      Max Drawdown Exit: N/A
+      Profit Taking Threshold: N/A
+      Trailing Stop Activation: N/A
+      Trailing Stop Distance: N/A
+
+------------------------------
+
+SECTION 9
+------------------------------
+Period: 2021-12-21 to 2023-05-05
+Test Period: 2023-02-04 to 2023-05-05
+
+Performance Metrics:
+  Return: 2.0384%
+  Sharpe Ratio: 0.4549
+  Max Drawdown: -1.4660%
+  Win Rate: 45.8716%
+  Buy & Hold Return: 23.6470%
+  Outperformance: -21.6086%
+
+Optimal Parameters:
+  REGIME 0
+    SMA Parameters:
+      Short Window: 5
+      Long Window: 34
+      Min Holding Period: 48
+      Trend Strength Threshold: 0.1
+    Volatility Parameters:
+      Method: parkinson
+      Lookback Period: 8
+    Regime Parameters:
+      Method: hmm
+      Stability Period: 0
+    Risk Management Parameters:
+      Target Volatility: N/A
+      Max Drawdown Exit: N/A
+      Profit Taking Threshold: N/A
+      Trailing Stop Activation: N/A
+      Trailing Stop Distance: N/A
+  REGIME 1
+    SMA Parameters:
+      Short Window: 4
+      Long Window: 21
+      Min Holding Period: 72
+      Trend Strength Threshold: 0.1
+    Volatility Parameters:
+      Method: parkinson
+      Lookback Period: 34
+    Regime Parameters:
+      Method: hmm
+      Stability Period: 12
+    Risk Management Parameters:
+      Target Volatility: N/A
+      Max Drawdown Exit: N/A
+      Profit Taking Threshold: N/A
+      Trailing Stop Activation: N/A
+      Trailing Stop Distance: N/A
+
+------------------------------
+
+SECTION 10
+------------------------------
+Period: 2022-03-21 to 2023-08-03
+Test Period: 2023-05-05 to 2023-08-03
+
+Performance Metrics:
+  Return: 0.2738%
+  Sharpe Ratio: -4.0156
+  Max Drawdown: -5.1885%
+  Win Rate: 44.6009%
+  Buy & Hold Return: 0.7255%
+  Outperformance: -0.4517%
+
+Optimal Parameters:
+  REGIME 0
+    SMA Parameters:
+      Short Window: 21
+      Long Window: 240
+      Min Holding Period: 72
+      Trend Strength Threshold: 0.2
+    Volatility Parameters:
+      Method: parkinson
+      Lookback Period: 20
+    Regime Parameters:
+      Method: hmm
+      Stability Period: 24
+    Risk Management Parameters:
+      Target Volatility: N/A
+      Max Drawdown Exit: N/A
+      Profit Taking Threshold: N/A
+      Trailing Stop Activation: N/A
+      Trailing Stop Distance: N/A
+  REGIME 1
+    SMA Parameters:
+      Short Window: 4
+      Long Window: 200
+      Min Holding Period: 24
+      Trend Strength Threshold: 0.7
+    Volatility Parameters:
+      Method: parkinson
+      Lookback Period: 20
+    Regime Parameters:
+      Method: hmm
+      Stability Period: 48
+    Risk Management Parameters:
+      Target Volatility: N/A
+      Max Drawdown Exit: N/A
+      Profit Taking Threshold: N/A
+      Trailing Stop Activation: N/A
+      Trailing Stop Distance: N/A
+
+------------------------------
+
+SECTION 11
+------------------------------
+Period: 2022-06-19 to 2023-11-01
+Test Period: 2023-08-03 to 2023-11-01
+
+Performance Metrics:
+  Return: 1.5239%
+  Sharpe Ratio: 0.3936
+  Max Drawdown: -3.1978%
+  Win Rate: 48.7179%
+  Buy & Hold Return: 18.4210%
+  Outperformance: -16.8971%
+
+Optimal Parameters:
+  REGIME 0
+    SMA Parameters:
+      Short Window: 5
+      Long Window: 21
+      Min Holding Period: 72
+      Trend Strength Threshold: 0.1
+    Volatility Parameters:
+      Method: parkinson
+      Lookback Period: 13
+    Regime Parameters:
+      Method: hmm
+      Stability Period: 24
+    Risk Management Parameters:
+      Target Volatility: N/A
+      Max Drawdown Exit: N/A
+      Profit Taking Threshold: N/A
+      Trailing Stop Activation: N/A
+      Trailing Stop Distance: N/A
+  REGIME 1
+    SMA Parameters:
+      Short Window: 12
+      Long Window: 21
+      Min Holding Period: 72
+      Trend Strength Threshold: 0.3
+    Volatility Parameters:
+      Method: parkinson
+      Lookback Period: 20
+    Regime Parameters:
+      Method: hmm
+      Stability Period: 72
+    Risk Management Parameters:
+      Target Volatility: N/A
+      Max Drawdown Exit: N/A
+      Profit Taking Threshold: N/A
+      Trailing Stop Activation: N/A
+      Trailing Stop Distance: N/A
+
+------------------------------
+
+SECTION 12
+------------------------------
+Period: 2022-09-17 to 2024-01-30
+Test Period: 2023-11-01 to 2024-01-30
+
+Performance Metrics:
+  Return: 2.6134%
+  Sharpe Ratio: 1.3492
+  Max Drawdown: -1.0599%
+  Win Rate: 49.2958%
+  Buy & Hold Return: 25.0319%
+  Outperformance: -22.4185%
+
+Optimal Parameters:
+  REGIME 0
+    SMA Parameters:
+      Short Window: 4
+      Long Window: 240
+      Min Holding Period: 48
+      Trend Strength Threshold: 0.3
+    Volatility Parameters:
+      Method: parkinson
+      Lookback Period: 20
+    Regime Parameters:
+      Method: hmm
+      Stability Period: 0
+    Risk Management Parameters:
+      Target Volatility: N/A
+      Max Drawdown Exit: N/A
+      Profit Taking Threshold: N/A
+      Trailing Stop Activation: N/A
+      Trailing Stop Distance: N/A
+  REGIME 1
+    SMA Parameters:
+      Short Window: 3
+      Long Window: 167
+      Min Holding Period: 48
+      Trend Strength Threshold: 0.7
+    Volatility Parameters:
+      Method: parkinson
+      Lookback Period: 20
+    Regime Parameters:
+      Method: hmm
+      Stability Period: 24
+    Risk Management Parameters:
+      Target Volatility: N/A
+      Max Drawdown Exit: N/A
+      Profit Taking Threshold: N/A
+      Trailing Stop Activation: N/A
+      Trailing Stop Distance: N/A
+
+------------------------------
+
+SECTION 13
+------------------------------
+Period: 2022-12-16 to 2024-04-29
+Test Period: 2024-01-30 to 2024-04-29
+
+Performance Metrics:
+  Return: 4.8454%
+  Sharpe Ratio: 2.0058
+  Max Drawdown: -5.0453%
+  Win Rate: 48.4946%
+  Buy & Hold Return: 46.5081%
+  Outperformance: -41.6626%
+
+Optimal Parameters:
+  REGIME 0
+    SMA Parameters:
+      Short Window: 8
+      Long Window: 200
+      Min Holding Period: 24
+      Trend Strength Threshold: 0.2
+    Volatility Parameters:
+      Method: parkinson
+      Lookback Period: 20
+    Regime Parameters:
+      Method: hmm
+      Stability Period: 72
+    Risk Management Parameters:
+      Target Volatility: N/A
+      Max Drawdown Exit: N/A
+      Profit Taking Threshold: N/A
+      Trailing Stop Activation: N/A
+      Trailing Stop Distance: N/A
+  REGIME 1
+    SMA Parameters:
+      Short Window: 13
+      Long Window: 21
+      Min Holding Period: 6
+      Trend Strength Threshold: 0.1
+    Volatility Parameters:
+      Method: parkinson
+      Lookback Period: 8
+    Regime Parameters:
+      Method: hmm
+      Stability Period: 120
+    Risk Management Parameters:
+      Target Volatility: N/A
+      Max Drawdown Exit: N/A
+      Profit Taking Threshold: N/A
+      Trailing Stop Activation: N/A
+      Trailing Stop Distance: N/A
+
+------------------------------
+
+SECTION 14
+------------------------------
+Period: 2023-03-16 to 2024-07-28
+Test Period: 2024-04-29 to 2024-07-28
+
+Performance Metrics:
+  Return: 0.1043%
+  Sharpe Ratio: -0.4183
+  Max Drawdown: -4.1089%
+  Win Rate: 46.7213%
+  Buy & Hold Return: 7.4483%
+  Outperformance: -7.3440%
+
+Optimal Parameters:
+  REGIME 0
+    SMA Parameters:
+      Short Window: 8
+      Long Window: 240
+      Min Holding Period: 12
+      Trend Strength Threshold: 0.3
+    Volatility Parameters:
+      Method: parkinson
+      Lookback Period: 20
+    Regime Parameters:
+      Method: hmm
+      Stability Period: 48
+    Risk Management Parameters:
+      Target Volatility: N/A
+      Max Drawdown Exit: N/A
+      Profit Taking Threshold: N/A
+      Trailing Stop Activation: N/A
+      Trailing Stop Distance: N/A
+  REGIME 1
+    SMA Parameters:
+      Short Window: 13
+      Long Window: 120
+      Min Holding Period: 24
+      Trend Strength Threshold: 0.5
+    Volatility Parameters:
+      Method: parkinson
+      Lookback Period: 13
+    Regime Parameters:
+      Method: hmm
+      Stability Period: 0
+    Risk Management Parameters:
+      Target Volatility: N/A
+      Max Drawdown Exit: N/A
+      Profit Taking Threshold: N/A
+      Trailing Stop Activation: N/A
+      Trailing Stop Distance: N/A
+
+------------------------------
+
+SECTION 15
+------------------------------
+Period: 2023-06-14 to 2024-10-26
+Test Period: 2024-07-28 to 2024-10-26
+
+Performance Metrics:
+  Return: -1.4222%
+  Sharpe Ratio: -2.2376
+  Max Drawdown: -3.1044%
+  Win Rate: 45.8333%
+  Buy & Hold Return: -1.8923%
+  Outperformance: 0.4701%
+
+Optimal Parameters:
+  REGIME 0
+    SMA Parameters:
+      Short Window: 21
+      Long Window: 300
+      Min Holding Period: 48
+      Trend Strength Threshold: 0.5
+    Volatility Parameters:
+      Method: parkinson
+      Lookback Period: 20
+    Regime Parameters:
+      Method: hmm
+      Stability Period: 24
+    Risk Management Parameters:
+      Target Volatility: N/A
+      Max Drawdown Exit: N/A
+      Profit Taking Threshold: N/A
+      Trailing Stop Activation: N/A
+      Trailing Stop Distance: N/A
+  REGIME 1
+    SMA Parameters:
+      Short Window: 13
+      Long Window: 200
+      Min Holding Period: 72
+      Trend Strength Threshold: 0.2
+    Volatility Parameters:
+      Method: parkinson
+      Lookback Period: 8
+    Regime Parameters:
+      Method: hmm
+      Stability Period: 120
+    Risk Management Parameters:
+      Target Volatility: N/A
+      Max Drawdown Exit: N/A
+      Profit Taking Threshold: N/A
+      Trailing Stop Activation: N/A
+      Trailing Stop Distance: N/A
+
+------------------------------
+
+SECTION 16
+------------------------------
+Period: 2023-09-12 to 2024-12-31
+Test Period: 2024-10-26 to 2024-12-31
+
+Performance Metrics:
+  Return: 1.3948%
+  Sharpe Ratio: 1.2929
+  Max Drawdown: -4.7923%
+  Win Rate: 48.6224%
+  Buy & Hold Return: 38.3673%
+  Outperformance: -36.9724%
+
+Optimal Parameters:
+  REGIME 0
+    SMA Parameters:
+      Short Window: 5
+      Long Window: 200
+      Min Holding Period: 48
+      Trend Strength Threshold: 0.4
+    Volatility Parameters:
+      Method: parkinson
+      Lookback Period: 13
+    Regime Parameters:
+      Method: hmm
+      Stability Period: 12
+    Risk Management Parameters:
+      Target Volatility: N/A
+      Max Drawdown Exit: N/A
+      Profit Taking Threshold: N/A
+      Trailing Stop Activation: N/A
+      Trailing Stop Distance: N/A
+  REGIME 1
+    SMA Parameters:
+      Short Window: 13
+      Long Window: 21
+      Min Holding Period: 6
+      Trend Strength Threshold: 0.3
+    Volatility Parameters:
+      Method: parkinson
+      Lookback Period: 20
+    Regime Parameters:
+      Method: hmm
+      Stability Period: 48
+    Risk Management Parameters:
+      Target Volatility: N/A
+      Max Drawdown Exit: N/A
+      Profit Taking Threshold: N/A
+      Trailing Stop Activation: N/A
+      Trailing Stop Distance: N/A
+
+------------------------------
+
+
+CSV-FORMATTED PARAMETER SUMMARY
+--------------------------------------------------
+Section,Regime,Return,Sharpe,MaxDD,ShortWindow,LongWindow,TrendThreshold,VolMethod,VolLookback,MaxDDExit,ProfitThreshold
+1,0,-0.0497,-4.1154,-0.0624,13,55,0.3,parkinson,20,0.15,0.05
+1,1,-0.0497,-4.1154,-0.0624,13,55,0.3,parkinson,20,0.15,0.05
+2,0,-0.0547,-3.0726,-0.0820,13,167,0.3,parkinson,20,N/A,N/A
+2,1,-0.0547,-3.0726,-0.0820,8,21,0.1,parkinson,8,N/A,N/A
+3,0,-0.0067,-0.4775,-0.0258,3,167,0.6,parkinson,20,N/A,N/A
+3,1,-0.0067,-0.4775,-0.0258,4,24,0.1,parkinson,20,N/A,N/A
+4,0,-0.0221,-1.5084,-0.0429,5,300,0.1,parkinson,13,N/A,N/A
+4,1,-0.0221,-1.5084,-0.0429,21,34,0.1,parkinson,13,N/A,N/A
+5,0,0.0040,-1.1535,-0.0598,5,120,0.3,parkinson,8,N/A,N/A
+5,1,0.0040,-1.1535,-0.0598,8,120,0.3,parkinson,13,N/A,N/A
+6,0,0.0107,-0.1557,-0.0297,3,55,0.3,parkinson,34,N/A,N/A
+6,1,0.0107,-0.1557,-0.0297,3,200,0.3,parkinson,34,N/A,N/A
+7,0,0.0251,0.2467,-0.0396,3,240,0.4,parkinson,34,N/A,N/A
+7,1,0.0251,0.2467,-0.0396,8,200,0.1,parkinson,20,N/A,N/A
+8,0,-0.0205,-4.7991,-0.0276,4,300,0.3,parkinson,20,N/A,N/A
+8,1,-0.0205,-4.7991,-0.0276,3,34,0.7,parkinson,34,N/A,N/A
+9,0,0.0204,0.4549,-0.0147,5,34,0.1,parkinson,8,N/A,N/A
+9,1,0.0204,0.4549,-0.0147,4,21,0.1,parkinson,34,N/A,N/A
+10,0,0.0027,-4.0156,-0.0519,21,240,0.2,parkinson,20,N/A,N/A
+10,1,0.0027,-4.0156,-0.0519,4,200,0.7,parkinson,20,N/A,N/A
+11,0,0.0152,0.3936,-0.0320,5,21,0.1,parkinson,13,N/A,N/A
+11,1,0.0152,0.3936,-0.0320,12,21,0.3,parkinson,20,N/A,N/A
+12,0,0.0261,1.3492,-0.0106,4,240,0.3,parkinson,20,N/A,N/A
+12,1,0.0261,1.3492,-0.0106,3,167,0.7,parkinson,20,N/A,N/A
+13,0,0.0485,2.0058,-0.0505,8,200,0.2,parkinson,20,N/A,N/A
+13,1,0.0485,2.0058,-0.0505,13,21,0.1,parkinson,8,N/A,N/A
+14,0,0.0010,-0.4183,-0.0411,8,240,0.3,parkinson,20,N/A,N/A
+14,1,0.0010,-0.4183,-0.0411,13,120,0.5,parkinson,13,N/A,N/A
+15,0,-0.0142,-2.2376,-0.0310,21,300,0.5,parkinson,20,N/A,N/A
+15,1,-0.0142,-2.2376,-0.0310,13,200,0.2,parkinson,8,N/A,N/A
+16,0,0.0139,1.2929,-0.0479,5,200,0.4,parkinson,13,N/A,N/A
+16,1,0.0139,1.2929,-0.0479,13,21,0.3,parkinson,20,N/A,N/A

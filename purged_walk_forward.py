@@ -173,6 +173,7 @@ def apply_purging_to_training_data(train_df, test_start, purge_days):
 def optimize_section_parameters_purged(train_df, val_df, test_start, config, section_index, previous_sections):
     """
     Optimize parameters for a purged walk-forward section.
+    Enhanced to ensure proper regime-specific optimization and learning.
     
     Parameters:
         train_df (DataFrame): Full training data before purging
@@ -203,15 +204,31 @@ def optimize_section_parameters_purged(train_df, val_df, test_start, config, sec
     # Get strategy configuration
     strategy_config = config.get('STRATEGY_CONFIG', {})
     
-    # Generate parameter combinations with learning from previous sections
-    param_grid = generate_parameter_set_with_learning(previous_sections, config, section_index)
-    
     # Step 1: Determine volatility and regimes
-    # Use parameters from first parameter set for regime detection
-    base_params = param_grid[0]
+    # Use parameters from previous section's first regime if available for regime detection
+    base_params = None
+    if previous_sections and section_index > 0 and 'regime_params' in previous_sections[-1]:
+        # Try to use parameters from previous section's regime 0 for consistency
+        if 0 in previous_sections[-1]['regime_params']:
+            base_params = previous_sections[-1]['regime_params'][0]
+            print("Using regime detection parameters from previous section's regime 0")
+        else:
+            # Use first available regime
+            regime_id = next(iter(previous_sections[-1]['regime_params']))
+            base_params = previous_sections[-1]['regime_params'][regime_id]
+            print(f"Using regime detection parameters from previous section's regime {regime_id}")
+    
+    if base_params is None:
+        # Generate default parameters if no previous section
+        param_grid = generate_parameter_grid(strategy_config, 
+                                           strategy_config.get('cross_validation', {}).get('parameter_testing', {}))
+        base_params = param_grid[0]
+        print("Using default parameters for regime detection")
+    
+    # Extract parameters for regime detection
     vol_method = base_params.get('vol_method', 'parkinson')
     vol_lookback = base_params.get('vol_lookback', 20)
-    regime_method = base_params.get('regime_method', 'kmeans')
+    regime_method = base_params.get('regime_method', 'hmm')  # Default to HMM
     n_regimes = base_params.get('n_regimes', 3)
     regime_stability = base_params.get('regime_stability', 48)
     regime_smoothing = base_params.get('regime_smoothing', 5)
@@ -223,15 +240,29 @@ def optimize_section_parameters_purged(train_df, val_df, test_start, config, sec
         window=vol_lookback
     )
     
-    # Detect regimes
-    regimes = detect_volatility_regimes(
-        purged_train_df, 
-        volatility, 
-        method=regime_method,
-        n_regimes=n_regimes,
-        smoothing_period=regime_smoothing,
-        stability_period=regime_stability
-    )
+    # Detect regimes - preferring HMM
+    try:
+        print(f"Attempting regime detection using HMM with {n_regimes} regimes")
+        regimes = detect_volatility_regimes(
+            purged_train_df, 
+            volatility, 
+            method='hmm',
+            n_regimes=n_regimes,
+            smoothing_period=regime_smoothing,
+            stability_period=regime_stability,
+            verbose=True
+        )
+    except Exception as e:
+        print(f"HMM regime detection failed: {e}")
+        print(f"Falling back to {regime_method} method")
+        regimes = detect_volatility_regimes(
+            purged_train_df, 
+            volatility, 
+            method=regime_method,
+            n_regimes=n_regimes,
+            smoothing_period=regime_smoothing,
+            stability_period=regime_stability
+        )
     
     # Ensure each regime has sufficient data
     regimes = ensure_sufficient_regime_data(purged_train_df, regimes, min_regime_data_points)
@@ -239,9 +270,13 @@ def optimize_section_parameters_purged(train_df, val_df, test_start, config, sec
     # Print regime distribution
     n_regimes = len(regimes.unique())
     print(f"\nDetected {n_regimes} regimes in purged training data")
+    regime_counts = regimes.value_counts()
+    for regime_id, count in regime_counts.items():
+        print(f"Regime {regime_id}: {count} data points ({count/len(regimes)*100:.2f}%)")
     
-    # Step 2: Optimize parameters for each regime
+    # Step 2: Optimize parameters for each regime separately
     regime_best_params = {}
+    regime_metrics = {}
     
     for regime_id in range(n_regimes):
         # Create mask for this regime
@@ -251,7 +286,21 @@ def optimize_section_parameters_purged(train_df, val_df, test_start, config, sec
         if regime_count < min_regime_data_points:
             print(f"\nInsufficient data for regime {regime_id}: {regime_count} points")
             print(f"Using default parameters for regime {regime_id}")
-            regime_best_params[regime_id] = param_grid[0]
+            # If we have parameters from the same regime in a previous section, use those
+            found_prev_params = False
+            if previous_sections:
+                for prev_section in reversed(previous_sections):  # Start from most recent
+                    if 'regime_params' in prev_section and regime_id in prev_section['regime_params']:
+                        regime_best_params[regime_id] = prev_section['regime_params'][regime_id]
+                        print(f"  Using parameters from previous section for regime {regime_id}")
+                        found_prev_params = True
+                        break
+            
+            if not found_prev_params:
+                # Generate a default parameter set
+                param_grid = generate_parameter_grid(strategy_config, 
+                                                  strategy_config.get('cross_validation', {}).get('parameter_testing', {}))
+                regime_best_params[regime_id] = param_grid[0]
             continue
         
         # Extract data for just this regime
@@ -259,69 +308,175 @@ def optimize_section_parameters_purged(train_df, val_df, test_start, config, sec
         
         print(f"\nOptimizing parameters for Regime {regime_id} using {regime_count} data points")
         
+        # IMPORTANT: Generate parameter combinations with REGIME-SPECIFIC LEARNING
+        param_grid = generate_parameter_set_with_learning(
+            previous_sections, 
+            config, 
+            section_index,
+            target_regime=regime_id  # This is the key parameter - target specific regime
+        )
+        
+        # Check if we have enough parameter combinations
+        if not param_grid or len(param_grid) < 10:
+            print(f"WARNING: Not enough parameter combinations for regime {regime_id}")
+            # Fall back to base parameter grid
+            base_param_grid = generate_parameter_grid(
+                strategy_config, 
+                strategy_config.get('cross_validation', {}).get('parameter_testing', {})
+            )
+            param_grid = base_param_grid[:100]  # Take up to 100 combinations
+        
         # Track best results for this regime
         best_score = -np.inf
         best_params = None
         best_metrics = None
         
-        # Get configuration parameters
-        print_frequency = config.get('STRATEGY_CONFIG', {}).get('cross_validation', {}).get('parameter_testing', {}).get('print_frequency', 20)
-        early_stop_threshold = config.get('STRATEGY_CONFIG', {}).get('cross_validation', {}).get('parameter_testing', {}).get('early_stop_threshold', 1000)
-        min_combinations = config.get('STRATEGY_CONFIG', {}).get('cross_validation', {}).get('parameter_testing', {}).get('min_combinations', 100)
+        # Get optimization settings
+        cv_config = config.get('STRATEGY_CONFIG', {}).get('cross_validation', {}).get('parameter_testing', {})
+        print_frequency = cv_config.get('print_frequency', 20)
+        early_stop_threshold = cv_config.get('early_stop_threshold', 1000)
+        min_combinations = cv_config.get('min_combinations', 100)
         
-        # Track non-improvement counter
-        early_stop_counter = 0
+        # Try improved optimization methods if available
+        optimization_method = cv_config.get('method', 'greedy')
         
-        # Test each parameter combination
-        for i, params in enumerate(param_grid):
+        # Check if Bayesian optimization should be used
+        use_bayesian = cv_config.get('use_bayesian', False)
+        if use_bayesian:
             try:
-                # Test this parameter combination on this regime's data
-                metrics, _ = test_parameter_combination(regime_df, params, strategy_config)
+                # Try to use Bayesian optimization
+                param_bounds = generate_parameter_bounds(strategy_config)
+                n_trials = min(200, len(param_grid))
+                best_params = optimize_parameters_bayesian(regime_df, param_bounds, strategy_config, n_trials)
                 
-                # Calculate simplified score
-                score = calculate_simple_fitness_score(metrics, config)
-                
-                # Store best result
-                if score > best_score:
-                    best_score = score
-                    best_params = params
+                if best_params:
+                    # Test best parameters to get metrics
+                    metrics, _ = test_parameter_combination(regime_df, best_params, strategy_config)
+                    best_score = calculate_fitness_score(metrics, strategy_config)
                     best_metrics = metrics
-                    early_stop_counter = 0  # Reset counter when finding a better score
-                    
-                    # Print progress when we find a better score
-                    print(f"  Found better score: {score:.4f} at combination {i+1}/{len(param_grid)}")
-                    print(f"  Return: {metrics.get('total_return', 0):.4%}, "
-                         f"Sharpe: {metrics.get('sharpe_ratio', 0):.4f}")
+                    print(f"  Bayesian optimization found parameters with score: {best_score:.4f}")
                 else:
-                    early_stop_counter += 1
-                
-                # Print progress periodically based on print_frequency
-                if (i+1) % print_frequency == 0:
-                    print(f"  Tested {i+1}/{len(param_grid)} combinations... (No improvement for {early_stop_counter} combinations)")
-                
-                # Check for early stopping
-                if early_stop_counter >= early_stop_threshold and i+1 >= min_combinations:
-                    print(f"  Early stopping after {i+1} combinations (no improvement for {early_stop_counter} combinations)")
-                    break
-                    
+                    print(f"  Bayesian optimization failed, falling back to greedy method")
+                    use_bayesian = False
             except Exception as e:
-                print(f"  Error testing parameters {params}: {e}")
+                print(f"  Bayesian optimization error: {e}")
+                print(f"  Falling back to greedy method")
+                use_bayesian = False
+        
+        # If not using Bayesian or it failed, use improved greedy
+        if not use_bayesian:
+            # Try to use improved greedy optimization if available
+            try:
+                use_improved_greedy = True
+                if use_improved_greedy:
+                    fold_results = process_greedy_fold_improved(regime_df, param_grid, strategy_config)
+                else:
+                    # Regular greedy optimization
+                    early_stop_counter = 0
+                    fold_results = []
+                    
+                    # Start timer for progress tracking
+                    start_time = time.time()
+                    last_print_time = start_time
+                    
+                    for j, params in enumerate(param_grid):
+                        try:
+                            # Test this parameter combination
+                            metrics, _ = test_parameter_combination(regime_df, params, strategy_config)
+                            score = calculate_fitness_score(metrics, strategy_config)
+                            
+                            # Store result
+                            fold_result = {
+                                'params': params,
+                                'metrics': metrics,
+                                'score': score
+                            }
+                            fold_results.append(fold_result)
+                            
+                            # Check for improvement and early stopping
+                            if score > best_score:
+                                best_score = score
+                                best_params = params
+                                best_metrics = metrics
+                                early_stop_counter = 0
+                                # Print progress when we find a better score
+                                print(f"  Found better score: {score:.4f} at combination {j+1}")
+                                print(f"  Parameters: {params}")
+                            else:
+                                early_stop_counter += 1
+                            
+                            # Early stopping, but only after minimum combinations
+                            if early_stop_counter >= early_stop_threshold and j >= min_combinations:
+                                print(f"  Early stopping after {j+1} combinations (no improvement for {early_stop_threshold} combinations)")
+                                break
+                            
+                            # Print progress periodically
+                            current_time = time.time()
+                            if j == 0 or (j+1) % print_frequency == 0 or (j+1) == len(param_grid) or (current_time - last_print_time) > 60:
+                                elapsed_time = current_time - start_time
+                                combinations_per_second = (j+1) / elapsed_time if elapsed_time > 0 else 0
+                                estimated_total_time = len(param_grid) / combinations_per_second if combinations_per_second > 0 else 0
+                                remaining_time = estimated_total_time - elapsed_time if estimated_total_time > 0 else 0
+                                
+                                print(f"  Tested {j+1}/{len(param_grid)} combinations ({(j+1)/len(param_grid)*100:.1f}%)")
+                                print(f"  Elapsed time: {elapsed_time/60:.1f} mins, Est. remaining: {remaining_time/60:.1f} mins")
+                                print(f"  Current best score: {best_score:.4f}, No improvement for {early_stop_counter} combinations")
+                                last_print_time = current_time
+                                
+                        except Exception as e:
+                            print(f"  Error testing parameters {params}: {e}")
+                
+                # If using improved greedy, extract best result
+                if use_improved_greedy and fold_results:
+                    # Sort by score and get best
+                    fold_results.sort(key=lambda x: x.get('score', -np.inf), reverse=True)
+                    if fold_results[0]['score'] > -np.inf:
+                        best_params = fold_results[0]['params']
+                        best_score = fold_results[0]['score']
+                        best_metrics = fold_results[0]['metrics']
+            
+            except Exception as e:
+                print(f"  Error in optimization process: {e}")
+                # In case of failure, use previous parameters or defaults
+                if previous_sections:
+                    for prev_section in reversed(previous_sections):
+                        if 'regime_params' in prev_section and regime_id in prev_section['regime_params']:
+                            best_params = prev_section['regime_params'][regime_id]
+                            print(f"  Using parameters from previous section due to error")
+                            break
+                if best_params is None:
+                    best_params = param_grid[0] if param_grid else None
         
         # Store best parameters for this regime
-        if best_params:
+        if best_params is not None:
             print(f"\nBest parameters for regime {regime_id}:")
             print(f"  {best_params}")
             print(f"  Score: {best_score:.4f}")
             
             if best_metrics:
-                print(f"  Sharpe: {best_metrics.get('sharpe_ratio', 0):.4f}")
+                print(f"  Sharpe: {best_metrics.get('sharpe_ratio', 0):.4f}, "
+                      f"Sortino: {best_metrics.get('sortino_ratio', 0):.4f}")
                 print(f"  Return: {best_metrics.get('total_return', 0):.4%}, "
-                     f"Max DD: {best_metrics.get('max_drawdown', 0):.4%}")
+                      f"Max DD: {best_metrics.get('max_drawdown', 0):.4%}")
             
             regime_best_params[regime_id] = best_params
+            regime_metrics[regime_id] = best_metrics
         else:
             print(f"No valid parameters found for regime {regime_id}")
             # Use default parameters
+            regime_best_params[regime_id] = param_grid[0] if param_grid else generate_parameter_grid(
+                strategy_config, 
+                strategy_config.get('cross_validation', {}).get('parameter_testing', {})
+            )[0]
+    
+    # Ensure all regimes have parameters
+    for regime_id in range(n_regimes):
+        if regime_id not in regime_best_params:
+            print(f"Warning: No parameters for regime {regime_id}, using default parameters")
+            param_grid = generate_parameter_grid(
+                strategy_config, 
+                strategy_config.get('cross_validation', {}).get('parameter_testing', {})
+            )
             regime_best_params[regime_id] = param_grid[0]
     
     # Step 3: Validate on validation data
@@ -335,6 +490,29 @@ def optimize_section_parameters_purged(train_df, val_df, test_start, config, sec
     print(f"Total Return: {val_metrics['total_return']:.4%}")
     print(f"Sharpe Ratio: {val_metrics['sharpe_ratio']:.4f}")
     print(f"Max Drawdown: {val_metrics['max_drawdown']:.4%}")
+    
+    # Calculate regime-specific performance in validation set
+    validation_regime_metrics = {}
+    for regime_id in range(n_regimes):
+        regime_mask = (val_result_df['regime'] == regime_id)
+        if regime_mask.any():
+            regime_returns = val_result_df.loc[regime_mask, 'strategy_returns']
+            if len(regime_returns) > 0:
+                regime_cumulative = (1 + regime_returns).cumprod()
+                regime_return = regime_cumulative.iloc[-1] - 1
+                print(f"  Regime {regime_id} Validation Return: {regime_return:.4%}")
+                
+                # Calculate Sharpe ratio
+                try:
+                    from performance_metrics import calculate_sharpe_ratio
+                    regime_sharpe = calculate_sharpe_ratio(regime_returns)
+                    print(f"  Regime {regime_id} Validation Sharpe: {regime_sharpe:.4f}")
+                except Exception as e:
+                    print(f"  Error calculating regime-specific metrics: {e}")
+    
+    # Store overall metrics for return
+    for regime_id, params in regime_best_params.items():
+        params['validation_score'] = val_metrics['sharpe_ratio']
     
     return regime_best_params
 
@@ -500,14 +678,16 @@ def run_purged_walk_forward_optimization(df, config):
 
     return overall_results
 
-def generate_parameter_set_with_learning(previous_sections, config, section_index):
+def generate_parameter_set_with_learning(previous_sections, config, section_index, target_regime=None):
     """
     Generate parameter combinations with learning from previous sections.
+    Enhanced to support regime-specific learning - each regime only learns from same regime in past.
     
     Parameters:
         previous_sections (list): Results from previous walk-forward sections
         config (dict): Strategy configuration including learning parameters
         section_index (int): Current section index
+        target_regime (int, optional): Specific regime to generate parameters for (if None, generates for all)
         
     Returns:
         list: Parameter combinations to test
@@ -545,28 +725,43 @@ def generate_parameter_set_with_learning(previous_sections, config, section_inde
     explore_count = max(10, min(explore_count, len(base_param_grid)))
     exploit_count = max(10, exploit_count)
     
-    print(f"Generating parameter set with learning: {explore_count} exploration, {exploit_count} exploitation")
+    if target_regime is not None:
+        print(f"Generating parameter set with learning for regime {target_regime}: {explore_count} exploration, {exploit_count} exploitation")
+    else:
+        print(f"Generating parameter set with learning: {explore_count} exploration, {exploit_count} exploitation")
     
     # Select random parameter sets for exploration
     exploration_params = random.sample(base_param_grid, min(explore_count, len(base_param_grid)))
     
-    # Get parameters from previous sections for exploitation
+    # Get parameters from previous sections for exploitation - WITH REGIME FILTERING
     exploitation_params = []
     
     # Limit to recent history based on max_history
     history_sections = previous_sections[-max_history:] if len(previous_sections) > max_history else previous_sections
     
-    # Collect all successful parameter sets from history
+    # Collect all successful parameter sets from history - FILTERED BY REGIME if requested
     all_params = []
     for section_results in history_sections:
         if 'regime_params' in section_results:
             # Collect parameters from each regime
             for regime_id, params in section_results['regime_params'].items():
+                # Skip if we're targeting a specific regime and this isn't it
+                if target_regime is not None and int(regime_id) != int(target_regime):
+                    continue
+                    
                 if params and isinstance(params, dict):
                     # Include the regime ID in the parameter set for tracking
                     params_copy = params.copy()
                     params_copy['regime_id'] = regime_id
-                    params_copy['score'] = section_results.get('metrics', {}).get('sharpe_ratio', 0)
+                    
+                    # Get performance metrics for this regime
+                    if 'regime_metrics' in section_results and regime_id in section_results['regime_metrics']:
+                        regime_metrics = section_results['regime_metrics'][regime_id]
+                        params_copy['score'] = regime_metrics.get('sharpe_ratio', 0)
+                    else:
+                        # Fallback - use overall metrics
+                        params_copy['score'] = section_results.get('metrics', {}).get('sharpe_ratio', 0)
+                        
                     all_params.append(params_copy)
     
     # Sort by performance (score or Sharpe ratio)
@@ -639,7 +834,8 @@ def generate_parameter_set_with_learning(previous_sections, config, section_inde
     
     final_params = list(unique_param_dict.values())
     
-    print(f"Generated {len(final_params)} unique parameter combinations")
+    print(f"Generated {len(final_params)} unique parameter combinations" + 
+          (f" for regime {target_regime}" if target_regime is not None else ""))
     
     return final_params
 
@@ -850,6 +1046,7 @@ def ensure_sufficient_regime_data(df, regimes, min_data_points=50):
 def evaluate_section_performance(test_df, section_params, config):
     """
     Evaluate performance on a purged walk-forward section.
+    Enhanced to store regime-specific performance metrics.
     
     Parameters:
         test_df (DataFrame): Test data
@@ -862,11 +1059,26 @@ def evaluate_section_performance(test_df, section_params, config):
     # Apply strategy with optimized parameters
     result_df = apply_enhanced_sma_strategy_regime_specific(test_df, section_params, config.get('STRATEGY_CONFIG', {}))
     
-    # Calculate performance metrics
+    # Calculate overall performance metrics
     metrics = calculate_advanced_metrics(result_df['strategy_returns'], result_df['strategy_cumulative'])
     
     # Calculate buy & hold metrics
     buy_hold_return = result_df['buy_hold_cumulative'].iloc[-1] - 1
+    
+    # Calculate regime-specific performance
+    regimes = result_df['regime']
+    regime_metrics = {}
+    
+    for regime_id in sorted(section_params.keys()):
+        regime_mask = (regimes == regime_id)
+        if regime_mask.any():
+            regime_returns = result_df.loc[regime_mask, 'strategy_returns']
+            
+            if len(regime_returns) > 0:
+                # Calculate metrics for this regime
+                regime_cumulative = (1 + regime_returns).cumprod()
+                regime_specific_metrics = calculate_advanced_metrics(regime_returns, regime_cumulative)
+                regime_metrics[regime_id] = regime_specific_metrics
     
     # Print summary
     print(f"\nSection Test Results:")
@@ -878,9 +1090,18 @@ def evaluate_section_performance(test_df, section_params, config):
     print(f"Buy & Hold Return: {buy_hold_return:.4%}")
     print(f"Outperformance: {metrics['total_return'] - buy_hold_return:.4%}")
     
+    # Print regime-specific results
+    print("\nRegime-Specific Results:")
+    for regime_id, regime_metric in regime_metrics.items():
+        print(f"Regime {regime_id}:")
+        print(f"  Return: {regime_metric['total_return']:.4%}")
+        print(f"  Sharpe: {regime_metric['sharpe_ratio']:.4f}")
+        print(f"  Max DD: {regime_metric['max_drawdown']:.4%}")
+    
     return {
         'metrics': metrics,
         'regime_params': section_params,
+        'regime_metrics': regime_metrics,
         'buy_hold_return': buy_hold_return,
         'outperformance': metrics['total_return'] - buy_hold_return
     }
