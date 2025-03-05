@@ -153,6 +153,53 @@ def generate_purged_walk_forward_periods(start_date, end_date, config):
     
     return periods
 
+# Add this function to purged_walk_forward.py
+def standardize_parameter_names(importance_dict):
+    """
+    Standardize parameter names by mapping shortened names to full parameter names.
+    
+    Parameters:
+        importance_dict (dict): Dictionary of parameter importance values
+        
+    Returns:
+        dict: Dictionary with standardized parameter names
+    """
+    # Define mapping from shortened to full parameter names
+    param_map = {
+        'vol': 'vol_method',
+        'long': 'long_window',
+        'short': 'short_window',
+        'trend': 'trend_strength_threshold',
+        'regime': 'regime_method',
+        'max': 'max_drawdown_exit',
+        'min': 'min_position_size',
+        'target': 'target_vol',
+        'n': 'n_regimes',
+        'trailing': 'trailing_stop_distance',
+        'profit': 'profit_taking_threshold'
+    }
+    
+    # Create a new dictionary with standardized names
+    standardized_dict = {}
+    
+    # Process each parameter in the importance dictionary
+    for param, importance in importance_dict.items():
+        # Check if this is a shortened parameter name
+        if param in param_map:
+            # Use the full parameter name
+            full_name = param_map[param]
+            
+            # If full name already exists, add the importance values
+            if full_name in standardized_dict:
+                standardized_dict[full_name] += importance
+            else:
+                standardized_dict[full_name] = importance
+        else:
+            # Keep original parameter name
+            standardized_dict[param] = importance
+    
+    return standardized_dict
+
 def apply_purging_to_training_data(train_df, test_start, purge_days):
     """
     Apply purging to training data by removing data points that overlap with test period events.
@@ -647,6 +694,10 @@ def save_final_model_with_sensitivity(overall_results, config):
     # Create filename
     filename = os.path.join(results_dir, f"final_model_with_sensitivity_{currency_str}_{timestamp}.pkl")
     
+    # Standardize parameter importance names
+    if 'parameter_importance' in overall_results:
+        overall_results['parameter_importance'] = standardize_parameter_names(overall_results['parameter_importance'])
+    
     # Prepare data to save
     final_data = {
         'overall_results': overall_results,
@@ -665,7 +716,7 @@ def save_final_model_with_sensitivity(overall_results, config):
     with open(csv_filename, 'w') as f:
         f.write("Parameter,Importance\n")
         for param, importance in sorted(overall_results.get('parameter_importance', {}).items(), 
-                                      key=lambda x: x[1], reverse=True):
+                                    key=lambda x: x[1], reverse=True):
             f.write(f"{param},{importance:.6f}\n")
     
     print(f"Parameter importance CSV saved to {csv_filename}")
@@ -922,6 +973,9 @@ def analyze_parameter_importance(study, config, output_dir=None, regime_id=None)
         for param_name, importance in param_importance.items():
             formatted_importance[param_name] = importance
         
+        # Standardize parameter names
+        formatted_importance = standardize_parameter_names(formatted_importance)
+        
         # Plot parameter importances
         fig = plot_param_importances(study)
         filename = os.path.join(output_dir, f"param_importance{regime_suffix}_{timestamp}.png")
@@ -1038,10 +1092,15 @@ def calculate_custom_parameter_importance(study, output_dir, regime_id=None):
         feature_names = X_processed.columns
         for name, importance in zip(feature_names, feature_importances):
             # Extract base parameter name from dummy variables
-            base_param = name.split('_')[0] if '_' in name else name
+            if '_' in name:
+                base_param = name.split('_')[0]
+            else:
+                base_param = name
+                
             if base_param not in rf_importances:
                 rf_importances[base_param] = 0
             rf_importances[base_param] += importance
+            
     except Exception as e:
         print(f"RandomForest importance calculation failed: {e}")
     
@@ -1063,6 +1122,9 @@ def calculate_custom_parameter_importance(study, output_dir, regime_id=None):
     if total_importance > 0:
         for param in combined_importances:
             combined_importances[param] /= total_importance
+    
+    # Standardize parameter names
+    combined_importances = standardize_parameter_names(combined_importances)
     
     # Generate plots
     try:
@@ -1229,11 +1291,16 @@ def track_parameter_performance(section_results, all_regime_studies, config):
             for param in global_importance:
                 global_importance[param] /= total_importance
         
+        # Standardize parameter names for consistency
+        global_importance = standardize_parameter_names(global_importance)
+        
+        # Sort and prepare for visualization with standardized names
+        sorted_importances = sorted(global_importance.items(), key=lambda x: x[1], reverse=True)
+        
         # Plot global parameter importance
         plt.figure(figsize=(12, 8))
         
-        # Sort importances
-        sorted_importances = sorted(global_importance.items(), key=lambda x: x[1], reverse=True)
+        # Extract sorted data for plotting
         params = [x[0] for x in sorted_importances]
         importances = [x[1] for x in sorted_importances]
         

@@ -86,7 +86,7 @@ STRATEGY_CONFIG = {
             [0.2, 0.8],         # For 3 regimes (more extreme)
             [0.3, 0.7]          # For 3 regimes (moderate)
         ],
-        'regime_stability_period': [0, 12, 24, 36, 48, 72, 96, 120],  # More options for stability timing
+        'regime_stability_period': [12, 24, 36, 48, 72],  # More options for stability timing
         'regime_opt_out': {
             0: False,
             1: False,
@@ -101,9 +101,9 @@ STRATEGY_CONFIG = {
     
     # SMA strategy settings
     'sma': {
-        'short_windows': [3, 4, 5, 8, 12, 13, 21],  # Extended short windows including Fibonacci
+        'short_windows': [3,  5, 8, 12, 21],  # Extended short windows including Fibonacci
         'long_windows': [21, 24, 34, 55, 72, 89, 120, 167, 200, 240, 300],  # More long windows
-        'min_holding_period': [6, 12, 24, 48, 72],  # More holding period options (hours)
+        'min_holding_period': [6, 12, 24],  # More holding period options (hours)
         'trend_filter_period': [89, 120, 167, 200, 240],  # More trend filter options
         'trend_strength_threshold': [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7],  # More threshold options
     },
@@ -113,7 +113,7 @@ STRATEGY_CONFIG = {
         'target_volatility': [0.15, 0.2, 0.25, 0.3, 0.35],  # More volatility targets
         'max_position_size': [0.8, 1.0],  # Position size options
         'min_position_size': [0.05, 0.1, 0.2],  # Min position options
-        'max_drawdown_exit': [0.08, 0.1, 0.12, 0.15, 0.18, 0.2, 0.25],  # More exit thresholds
+        'max_drawdown_exit': [0.1, 0.12, 0.15, 0.18, 0.2],  # More exit thresholds
         'profit_taking_threshold': [0.1, 0.12, 0.15, 0.18, 0.2, 0.25, 0.3, 0.35],  # More profit targets
         'trailing_stop_activation': [0.03, 0.05, 0.08, 0.1, 0.12, 0.15],  # More activation levels
         'trailing_stop_distance': [0.01, 0.02, 0.03, 0.04, 0.05, 0.07, 0.1],  # More trailing distances
@@ -124,8 +124,8 @@ STRATEGY_CONFIG = {
     'cross_validation': {
         'parameter_testing': {
             'method': 'optuna',  # Changed from 'greedy' to 'optuna'
-            'n_trials': 100,  # Number of Optuna trials per regime optimization
-            'timeout': 3600,  # Maximum seconds per optimization (optional)
+            'n_trials': 20000,  # Number of Optuna trials per regime optimization
+            'timeout': 1200,  # Maximum seconds per optimization (optional)
             'n_random_combinations': 50000,  # Still used for fallback if Optuna fails
             'max_combinations': 500000,  # Maximum number of combinations for fallback
             'optimize_risk_params': True,  # Whether to optimize risk params or use defaults
@@ -134,7 +134,7 @@ STRATEGY_CONFIG = {
             'advanced_mode': True,  # Set to True to enable all parameter combinations
             'early_stop_threshold': 1000,  # For fallback method
             'min_combinations': 200,  # Minimum combinations for fallback method
-            'print_frequency': 100,  # How often to print progress during optimization
+            'print_frequency': 50,  # How often to print progress during optimization
             'adaptive_sampling': True,  # Use adaptive sampling for walk-forward
             'use_simplified_scoring': True,  # Use simplified scoring (Sharpe + Returns)
             'optuna_settings': {
