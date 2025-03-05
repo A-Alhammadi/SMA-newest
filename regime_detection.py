@@ -7,7 +7,7 @@ from sklearn.cluster import KMeans
 from hmmlearn import hmm
 from statsmodels.nonparametric.kde import KDEUnivariate
 
-def detect_regimes_hmm(volatility_series, n_regimes=3, smoothing_period=5):
+def detect_regimes_hmm(volatility_series, n_regimes=3, smoothing_period=5, verbose=False):
     """
     Detect volatility regimes using Hidden Markov Models with improved stability.
     
@@ -15,6 +15,7 @@ def detect_regimes_hmm(volatility_series, n_regimes=3, smoothing_period=5):
         volatility_series (Series): Volatility time series
         n_regimes (int): Number of regimes to identify
         smoothing_period (int): Period for smoothing regime transitions
+        verbose (bool): Whether to print detailed progress messages
         
     Returns:
         Series: Regime classifications (0 to n_regimes-1)
@@ -61,7 +62,8 @@ def detect_regimes_hmm(volatility_series, n_regimes=3, smoothing_period=5):
                 
                 # Check if model converged
                 if not model.monitor_.converged:
-                    print(f"HMM did not converge with {config['covariance_type']} covariance (attempt {attempt+1})")
+                    if verbose:
+                        print(f"HMM did not converge with {config['covariance_type']} covariance (attempt {attempt+1})")
                     continue
                 
                 # Predict hidden states
@@ -89,16 +91,19 @@ def detect_regimes_hmm(volatility_series, n_regimes=3, smoothing_period=5):
                     regimes = regimes.rolling(window=smoothing_period, center=True).median().ffill().bfill()
                     regimes = regimes.round().astype(int)
                 
-                print(f"Successfully fitted HMM with {config['covariance_type']} covariance")
+                # Only print success message if verbose
+                if verbose:
+                    print(f"Successfully fitted HMM with {config['covariance_type']} covariance")
                 return regimes
                 
             except Exception as e:
-                print(f"HMM estimation failed with {config['covariance_type']} covariance (attempt {attempt+1}): {str(e)}")
+                if verbose:
+                    print(f"HMM estimation failed with {config['covariance_type']} covariance (attempt {attempt+1}): {str(e)}")
     
     # If all HMM attempts failed, fall back to K-means
     print("All HMM attempts failed. Falling back to K-means for regime detection")
     return detect_regimes_kmeans(volatility_series, n_regimes, smoothing_period)
-    
+
 def detect_regimes_kmeans(volatility_series, n_regimes=3, smoothing_period=5):
     """
     Detect volatility regimes using K-means clustering with robust error handling.
@@ -280,7 +285,7 @@ def detect_regimes_quantile(volatility_series, quantile_thresholds=[0.33, 0.67],
 
 def detect_volatility_regimes(df, volatility, method='kmeans', n_regimes=3, 
                              quantile_thresholds=[0.33, 0.67], smoothing_period=5,
-                             stability_period=48):
+                             stability_period=48, verbose=False):
     """
     Detect volatility regimes using the specified method and apply stability constraints.
     
@@ -292,6 +297,7 @@ def detect_volatility_regimes(df, volatility, method='kmeans', n_regimes=3,
         quantile_thresholds (list): Quantile thresholds (for quantile method)
         smoothing_period (int): Period for smoothing regime transitions
         stability_period (int): Hours required before confirming regime change
+        verbose (bool): Whether to print detailed progress messages
         
     Returns:
         Series: Regime classifications
@@ -302,7 +308,7 @@ def detect_volatility_regimes(df, volatility, method='kmeans', n_regimes=3,
     elif method == 'kde':
         regimes = detect_regimes_kde(volatility, n_regimes, smoothing_period)
     elif method == 'hmm':
-        regimes = detect_regimes_hmm(volatility, n_regimes, smoothing_period)
+        regimes = detect_regimes_hmm(volatility, n_regimes, smoothing_period, verbose)
     else:  # Default to quantile method
         regimes = detect_regimes_quantile(volatility, quantile_thresholds, smoothing_period)
     

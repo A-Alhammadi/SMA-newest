@@ -136,7 +136,7 @@ STRATEGY_CONFIG = {
             'advanced_mode': True,  # Set to True to enable all parameter combinations
             'early_stop_threshold': 7500,  # Reduced non-improving combinations before stopping for walk-forward
             'min_combinations': 200,        # Minimum combinations to test regardless of improvement
-            'print_frequency': 20,          # How often to print progress during optimization
+            'print_frequency': 100,          # How often to print progress during optimization
             'adaptive_sampling': True,      # Use adaptive sampling for walk-forward
             'use_simplified_scoring': True  # Use simplified scoring (Sharpe + Returns)
         }
