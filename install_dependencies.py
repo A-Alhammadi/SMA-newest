@@ -37,6 +37,7 @@ def main():
         "numba",     # For accelerated numerical calculations
         "optuna",    # For parameter optimization
         "plotly",    # For interactive visualizations and parameter importance plots
+        "kaleido",   # For static image export from Plotly
         "seaborn",   # For enhanced statistical visualizations
         "tqdm",      # For progress bars during optimization (optional but useful)
     ]

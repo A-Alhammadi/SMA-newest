@@ -1,0 +1,28 @@
+PARAMETER IMPORTANCE SUMMARY
+===========================
+
+Parameters ranked by global importance:
+min_position_size: 0.1812
+vol_method: 0.1046
+trend_strength_threshold: 0.0836
+long_window: 0.0751
+target_vol: 0.0703
+regime_method: 0.0658
+min_holding_period: 0.0629
+vol_lookback: 0.0529
+short_window: 0.0437
+regime_stability: 0.0400
+max_drawdown_exit: 0.0328
+n_regimes: 0.0000
+
+
+Recommended focus parameters (top 30%):
+min_position_size: 0.1812
+vol_method: 0.1046
+trend_strength_threshold: 0.0836
+
+
+Less important parameters (bottom 30%):
+regime_stability: 0.0400
+max_drawdown_exit: 0.0328
+n_regimes: 0.0000

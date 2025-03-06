@@ -1,0 +1,47 @@
+================================================================================
+BEST REGIME-SPECIFIC PARAMETERS AND PERFORMANCE
+Generated on: 2025-03-06 12:52:17
+================================================================================
+
+BEST PARAMETERS FOR EACH REGIME
+--------------------------------------------------
+
+Regime 0 Parameters:
+  vol_method: parkinson
+  vol_lookback: 178
+  short_window: 11
+  long_window: 273
+  min_holding_period: 6
+  trend_strength_threshold: 0.2
+  regime_method: hmm
+  n_regimes: 1
+  regime_stability: 72
+  target_vol: 0.25
+  max_drawdown_exit: 0.18
+
+PERFORMANCE USING BEST PARAMETERS
+--------------------------------------------------
+
+total_return: 44.8200%
+annualized_return: 7.6832%
+volatility: 3.1811%
+max_drawdown: -22.4674%
+sharpe_ratio: 0.1770
+sortino_ratio: 0.3621
+calmar_ratio: 0.0044
+win_rate: 47.8057%
+gain_to_pain: 1.0243
+
+Buy & Hold Return: 1190.2797%
+Outperformance: -1145.4597%
+
+PERFORMANCE BY REGIME
+--------------------------------------------------
+
+Regime 0 (43825 periods, 100.00%):
+  Return: 44.8200%
+  Market Return: 1190.2797%
+  Alpha: -1145.4597%
+  Sharpe Ratio: 0.1770
+  Parameters: SMA(11/273), Trend=0.2
+

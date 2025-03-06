@@ -246,6 +246,7 @@ def save_best_regime_results(best_params, result_df, metrics, config):
     return best_params_file
 
 # Modified main try-except block:
+# Modified main try-except block:
 try:
     start_time = time.time()
     
@@ -264,11 +265,25 @@ try:
     full_config = {
         'STRATEGY_CONFIG': STRATEGY_CONFIG,
         'WALK_FORWARD_CONFIG': WALK_FORWARD_CONFIG,
-        'LEARNING_CONFIG': LEARNING_CONFIG
+        'LEARNING_CONFIG': LEARNING_CONFIG,
+        'CURRENCY': CURRENCY  # Add currency for file naming
     }
     
     # Run purged walk-forward optimization
     overall_results = run_purged_walk_forward_optimization(full_df, full_config)
+    
+    # Extract best parameters for each regime
+    print("\nExtracting best parameters for each regime...")
+    best_params = extract_best_regime_parameters(overall_results['section_results'])
+    
+    # Evaluate strategy with best parameters
+    print("\nEvaluating strategy with best parameters on entire period...")
+    result_df, metrics = evaluate_strategy_with_best_params(full_df, best_params, full_config)
+    
+    # Save results
+    print("\nSaving best regime results...")
+    best_params_file = save_best_regime_results(best_params, result_df, metrics, full_config)
+    print(f"Best regime results saved to {best_params_file}")
     
     # Close database connection
     db.close()
@@ -279,6 +294,12 @@ try:
     print(f"  Buy & Hold Return: {overall_results['overall_buy_hold']:.2%}")
     print(f"  Outperformance: {overall_results['overall_outperformance']:.2%}")
     print(f"  Sections: {overall_results['section_count']}")
+    
+    # Print best parameters results
+    print("\nBest Parameters Strategy Summary:")
+    print(f"  Total Return: {metrics['total_return']:.2%}")
+    print(f"  Buy & Hold Return: {result_df['buy_hold_cumulative'].iloc[-1] - 1:.2%}")
+    print(f"  Outperformance: {metrics['total_return'] - (result_df['buy_hold_cumulative'].iloc[-1] - 1):.2%}")
     
     end_time = time.time()
     duration = (end_time - start_time) / 60

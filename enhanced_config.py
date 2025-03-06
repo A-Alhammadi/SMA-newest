@@ -77,8 +77,8 @@ STRATEGY_CONFIG = {
     
     # Regime detection settings
     'regime_detection': {
-        'methods': ['hmm'],  #'kmeans', 'quantile', 'hmm' Added more detection methods
-        'n_regimes': [2],  # Testing different number of regimes
+        'methods': ['quantile', 'hmm'],  #'kmeans', 'quantile', 'hmm' Added more detection methods
+        'n_regimes': [2, 3],  # Testing different number of regimes
         'quantile_thresholds': [
             [0.33, 0.67],       # For 3 regimes (standard)
             [0.25, 0.5, 0.75],  # For 4 regimes (quartiles)
@@ -101,22 +101,22 @@ STRATEGY_CONFIG = {
     
     # SMA strategy settings
     'sma': {
-        'short_windows': [3,  5, 8, 12, 21],  # Extended short windows including Fibonacci
-        'long_windows': [21, 24, 34, 55, 72, 89, 120, 167, 200, 240, 300],  # More long windows
-        'min_holding_period': [6, 12, 24],  # More holding period options (hours)
-        'trend_filter_period': [89, 120, 167, 200, 240],  # More trend filter options
-        'trend_strength_threshold': [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7],  # More threshold options
+        'short_windows': [5, 8, 10, 13, 16, 20, 24],  # Extended short windows including Fibonacci
+        'long_windows': [21, 34, 55, 72, 89, 120, 167, 200, 240],  # More long windows
+        'min_holding_period': [6, 12, 18, 24],  # More holding period options (hours)
+        'trend_filter_period': [100, 150, 200],  # More trend filter options
+        'trend_strength_threshold': [0.1, 0.15, 0.2, 0.25, 0.3, 0.35],  # More threshold options
     },
     
     # Risk management settings
     'risk_management': {
-        'target_volatility': [0.15, 0.2, 0.25, 0.3, 0.35],  # More volatility targets
-        'max_position_size': [0.8, 1.0],  # Position size options
-        'min_position_size': [0.05, 0.1, 0.2],  # Min position options
+        'target_volatility': [0.25, 0.35, 0.45, 0.55, 0.65],  # More volatility targets
+        'max_position_size': [1.0],  # Position size options
+        'min_position_size': [0.2, 0.25, 0.3, 0.35],  # Min position options
         'max_drawdown_exit': [0.1, 0.12, 0.15, 0.18, 0.2],  # More exit thresholds
         'profit_taking_threshold': [0.1, 0.12, 0.15, 0.18, 0.2, 0.25, 0.3, 0.35],  # More profit targets
         'trailing_stop_activation': [0.03, 0.05, 0.08, 0.1, 0.12, 0.15],  # More activation levels
-        'trailing_stop_distance': [0.01, 0.02, 0.03, 0.04, 0.05, 0.07, 0.1],  # More trailing distances
+        'trailing_stop_distance': [0.01, 0.02, 0.03, 0.04, 0.05, 0.07],  # More trailing distances
         'materiality_threshold': 0.05,
     },
     
@@ -125,7 +125,7 @@ STRATEGY_CONFIG = {
         'parameter_testing': {
             'method': 'optuna',  # Changed from 'greedy' to 'optuna'
             'n_trials': 20000,  # Number of Optuna trials per regime optimization
-            'timeout': 1200,  # Maximum seconds per optimization (optional)
+            'timeout': 450,  # Maximum seconds per optimization (optional)
             'n_random_combinations': 50000,  # Still used for fallback if Optuna fails
             'max_combinations': 500000,  # Maximum number of combinations for fallback
             'optimize_risk_params': True,  # Whether to optimize risk params or use defaults
@@ -148,8 +148,8 @@ STRATEGY_CONFIG = {
     
     # Parameter selection settings - Simplified for Walk-Forward
     'parameter_selection': {
-        'sharpe_weight': 0.70,  # Higher weight for Sharpe ratio
-        'return_weight': 0.30,  # Lower weight for returns
+        'sharpe_weight': 0.5,  # Higher weight for Sharpe ratio
+        'return_weight': 0.5,  # Lower weight for returns
         'consistency_weight': 0.20,  # Weight for consistency across regimes
         'stability_weight': 0.25,  # Reduced weight for parameter stability vs. performance
         'sortino_weight': 0.0,  # Removed from scoring
