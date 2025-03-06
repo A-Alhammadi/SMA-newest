@@ -1,0 +1,96 @@
+===== REGIME ANALYSIS REPORT =====
+
+Currency: BTC/USD
+Date: 2025-03-06 22:20:54
+
+REGIME DISTRIBUTION:
+----------------------------------------
+Regime 1: 18940 periods (43.22%)
+Regime 2: 13134 periods (29.97%)
+Regime 0: 11751 periods (26.81%)
+
+REGIME TRANSITION MATRIX (%):
+----------------------------------------
+regime          0          1          2
+regime                                 
+0.0     98.468215   1.319037   0.212748
+1.0      0.850098  98.347326   0.802577
+2.0      0.137049   1.210598  98.652353
+
+REGIME DURATION STATISTICS (periods):
+----------------------------------------
+Regime 0: Avg=65.28, Max=504
+Regime 1: Avg=60.32, Max=153
+Regime 2: Avg=74.20, Max=979
+
+PERFORMANCE BY REGIME:
+----------------------------------------
+Regime 0:
+  - Strategy Return: -39.99%
+  - Market Return: 39.92%
+  - Alpha: -79.91%
+  - Sharpe Ratio: -1.58
+  - Parameters:
+    * vol_method: parkinson
+    * vol_lookback: 118
+    * short_window: 7
+    * long_window: 22
+    * min_holding_period: 18
+    * trend_strength_threshold: 0.25
+    * regime_method: hmm
+    * n_regimes: 3
+    * regime_stability: 24
+    * target_vol: 0.6
+    * max_drawdown_exit: 0.16
+
+Regime 1:
+  - Strategy Return: -47.64%
+  - Market Return: 78.93%
+  - Alpha: -126.58%
+  - Sharpe Ratio: -0.58
+  - Parameters:
+    * vol_method: parkinson
+    * vol_lookback: 105
+    * short_window: 9
+    * long_window: 207
+    * min_holding_period: 24
+    * trend_strength_threshold: 0.25
+    * regime_method: quantile
+    * n_regimes: 2
+    * regime_stability: 60
+    * target_vol: 0.75
+    * max_drawdown_exit: 0.17
+
+Regime 2:
+  - Strategy Return: -60.30%
+  - Market Return: 415.35%
+  - Alpha: -475.66%
+  - Sharpe Ratio: -1.54
+  - Parameters:
+    * vol_method: parkinson
+    * vol_lookback: 148
+    * short_window: 13
+    * long_window: 69
+    * min_holding_period: 12
+    * trend_strength_threshold: 0.35
+    * regime_method: quantile
+    * n_regimes: 2
+    * regime_stability: 72
+    * target_vol: 0.39999999999999997
+    * max_drawdown_exit: 0.14
+
+
+REGIME PARAMETER SUMMARY:
+----------------------------------------
+Regime 0 Parameters:
+  - SMA Parameters: Short=7, Long=22, Trend=0.25
+  - Risk Parameters: Target Vol=0.6, Max DD=0.16
+
+Regime 1 Parameters:
+  - SMA Parameters: Short=9, Long=207, Trend=0.25
+  - Risk Parameters: Target Vol=0.75, Max DD=0.17
+
+Regime 2 Parameters:
+  - SMA Parameters: Short=13, Long=69, Trend=0.35
+  - Risk Parameters: Target Vol=0.39999999999999997, Max DD=0.14
+

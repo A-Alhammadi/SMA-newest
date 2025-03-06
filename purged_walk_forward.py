@@ -489,53 +489,109 @@ def optimize_section_parameters_purged(train_df, val_df, test_start, config, sec
     
     return regime_best_params, regime_studies
 
+def evaluate_section_with_precomputed_regimes(test_df, section_params, config):
+    """
+    Evaluate performance on a walk-forward section using precomputed regimes.
+    """
+    # Apply strategy with optimized parameters and precomputed regimes
+    result_df = apply_enhanced_sma_strategy_with_precomputed_regimes(test_df, section_params, config.get('STRATEGY_CONFIG', {}))
+    
+    # Calculate overall performance metrics
+    metrics = calculate_advanced_metrics(result_df['strategy_returns'], result_df['strategy_cumulative'])
+    
+    # Calculate buy & hold metrics
+    buy_hold_return = result_df['buy_hold_cumulative'].iloc[-1] - 1
+    
+    # Calculate regime-specific performance
+    regimes = result_df['regime']
+    regime_metrics = {}
+    
+    for regime_id in sorted(section_params.keys()):
+        regime_mask = (regimes == regime_id)
+        if regime_mask.any():
+            regime_returns = result_df.loc[regime_mask, 'strategy_returns']
+            
+            if len(regime_returns) > 0:
+                # Calculate metrics for this regime
+                regime_cumulative = (1 + regime_returns).cumprod()
+                regime_specific_metrics = calculate_advanced_metrics(regime_returns, regime_cumulative)
+                regime_metrics[regime_id] = regime_specific_metrics
+    
+    # Print summary
+    print(f"\nSection Test Results:")
+    print(f"Total Return: {metrics['total_return']:.4%}")
+    print(f"Annualized Return: {metrics['annualized_return']:.4%}")
+    print(f"Sharpe Ratio: {metrics['sharpe_ratio']:.4f}")
+    print(f"Max Drawdown: {metrics['max_drawdown']:.4%}")
+    print(f"Win Rate: {metrics['win_rate']:.4%}")
+    print(f"Buy & Hold Return: {buy_hold_return:.4%}")
+    print(f"Outperformance: {metrics['total_return'] - buy_hold_return:.4%}")
+    
+    # Print regime-specific results
+    print("\nRegime-Specific Results:")
+    for regime_id, regime_metric in regime_metrics.items():
+        print(f"Regime {regime_id}:")
+        print(f"  Return: {regime_metric['total_return']:.4%}")
+        print(f"  Sharpe: {regime_metric['sharpe_ratio']:.4f}")
+        print(f"  Max DD: {regime_metric['max_drawdown']:.4%}")
+    
+    return {
+        'metrics': metrics,
+        'regime_params': section_params,
+        'regime_metrics': regime_metrics,
+        'buy_hold_return': buy_hold_return,
+        'outperformance': metrics['total_return'] - buy_hold_return
+    }
+
 def run_purged_walk_forward_optimization(df, config):
     """
-    Run purged walk-forward optimization for the strategy using Optuna optimization.
-    Includes parameter sensitivity analysis.
-    
-    Parameters:
-        df (DataFrame): Full dataset
-        config (dict): Full configuration including walk-forward settings
-        
-    Returns:
-        dict: Overall results from purged walk-forward optimization
+    Run purged walk-forward optimization with regime awareness.
     """
-    print("\nRunning purged walk-forward optimization with Optuna...")
+    print("\nRunning regime-aware purged walk-forward optimization...")
     start_time = time.time()
     
     # Get walk-forward configuration
     walk_forward_config = config.get('WALK_FORWARD_CONFIG', {})
     save_sections = walk_forward_config.get('save_sections', True)
     window_type = walk_forward_config.get('window_type', 'expanding')
+    regime_aware = walk_forward_config.get('regime_aware_sections', True)
+    precompute_regimes = walk_forward_config.get('precompute_regimes', True)
     
     # Get date range from data
     start_date = df.index.min()
     end_date = df.index.max()
     
-    # Generate purged walk-forward periods
-    periods = generate_purged_walk_forward_periods(start_date, end_date, walk_forward_config)
+    # Step 1: Precompute regimes if enabled
+    global_regimes = None
+    global_volatility = None
+    
+    if precompute_regimes:
+        print("Precomputing regimes for the entire dataset...")
+        global_regimes, global_volatility = perform_regime_precomputation(df, config)
+        # Add precomputed regimes to dataframe for later use
+        df['precomputed_regime'] = global_regimes
+    
+    # Step 2: Generate walk-forward periods
+    if regime_aware and global_regimes is not None:
+        print("Generating regime-aware walk-forward periods...")
+        periods = generate_regime_aware_walk_forward_periods(start_date, end_date, global_regimes, walk_forward_config)
+    else:
+        print("Generating standard walk-forward periods...")
+        periods = generate_purged_walk_forward_periods(start_date, end_date, walk_forward_config)
     
     window_type_str = "sliding window" if window_type == 'sliding' else "expanding window"
-    print(f"Generated {len(periods)} purged walk-forward periods using {window_type_str} approach")
-    for i, (train_start, train_end, purge_start, val_start, val_end, test_start, test_end, embargo_end) in enumerate(periods):
-        print(f"Period {i+1}:")
-        print(f"  Training: {train_start.strftime('%Y-%m-%d')} to {train_end.strftime('%Y-%m-%d')} (purged from {purge_start.strftime('%Y-%m-%d')})")
-        print(f"  Validation: {val_start.strftime('%Y-%m-%d')} to {val_end.strftime('%Y-%m-%d')}")
-        print(f"  Testing: {test_start.strftime('%Y-%m-%d')} to {test_end.strftime('%Y-%m-%d')}")
-        print(f"  Embargo until: {embargo_end.strftime('%Y-%m-%d')}")
+    regime_aware_str = "regime-aware" if regime_aware else "standard"
+    print(f"Generated {len(periods)} {regime_aware_str} purged walk-forward periods using {window_type_str} approach")
     
     # Initialize results storage
     all_section_results = []
     combined_test_results = pd.DataFrame()
-    
-    # Store all Optuna studies for parameter sensitivity analysis
     all_section_studies = {}
     
     # Process each walk-forward period
     for i, (train_start, train_end, purge_start, val_start, val_end, test_start, test_end, embargo_end) in enumerate(periods):
         print(f"\n{'='*80}")
-        print(f"Processing purged walk-forward section {i+1}/{len(periods)} using {window_type_str}")
+        print(f"Processing purged walk-forward section {i+1}/{len(periods)} using {regime_aware_str} {window_type_str}")
         print(f"{'='*80}")
         
         # Extract data for this period
@@ -547,21 +603,48 @@ def run_purged_walk_forward_optimization(df, config):
         print(f"Validation data: {len(val_df)} points")
         print(f"Test data: {len(test_df)} points")
         
-        # Step 1: Optimize parameters for this section with Optuna
-        regime_params, regime_studies = optimize_section_parameters_purged(
-            train_df, 
-            val_df, 
-            test_start,
-            config, 
-            i, 
-            all_section_results
-        )
+        # Step 3: Optimize parameters for this section
+        if precompute_regimes:
+            # Use precomputed regimes for optimization
+            regime_params, regime_studies = optimize_section_parameters_with_precomputed_regimes(
+                train_df, 
+                val_df, 
+                test_start,
+                config, 
+                i, 
+                all_section_results,
+                global_regimes,
+                global_volatility
+            )
+        else:
+            # Use standard optimization
+            regime_params, regime_studies = optimize_section_parameters_purged(
+                train_df, 
+                val_df, 
+                test_start,
+                config, 
+                i, 
+                all_section_results
+            )
         
         # Store studies for this section
         all_section_studies[i] = regime_studies
         
-        # Step 2: Evaluate on test data
-        section_results = evaluate_section_performance(test_df, regime_params, config)
+        # Step 4: Evaluate on test data
+        if precompute_regimes:
+            # Add precomputed regimes to test data
+            test_df_with_regime = test_df.copy()
+            test_df_with_regime['precomputed_regime'] = global_regimes.loc[test_df.index]
+            
+            # Evaluate with precomputed regimes
+            section_results = evaluate_section_with_precomputed_regimes(
+                test_df_with_regime, 
+                regime_params, 
+                config
+            )
+        else:
+            # Standard evaluation
+            section_results = evaluate_section_performance(test_df, regime_params, config)
         
         # Store section results
         section_results.update({
@@ -580,7 +663,20 @@ def run_purged_walk_forward_optimization(df, config):
         all_section_results.append(section_results)
         
         # Apply strategy to test data to get equity curve
-        result_df = apply_enhanced_sma_strategy_regime_specific(test_df, regime_params, config.get('STRATEGY_CONFIG', {}))
+        if precompute_regimes:
+            # Apply with precomputed regimes
+            result_df = apply_enhanced_sma_strategy_with_precomputed_regimes(
+                test_df_with_regime,
+                regime_params,
+                config.get('STRATEGY_CONFIG', {})
+            )
+        else:
+            # Standard strategy application
+            result_df = apply_enhanced_sma_strategy_regime_specific(
+                test_df,
+                regime_params,
+                config.get('STRATEGY_CONFIG', {})
+            )
         
         # Extract equity curve and combine with test period
         test_equity = result_df[['strategy_cumulative', 'buy_hold_cumulative']].copy()
@@ -606,7 +702,7 @@ def run_purged_walk_forward_optimization(df, config):
     
     # Print overall results
     print(f"\n{'='*80}")
-    print(f"PURGED WALK-FORWARD OPTIMIZATION OVERALL RESULTS")
+    print(f"REGIME-AWARE PURGED WALK-FORWARD OPTIMIZATION OVERALL RESULTS")
     print(f"{'='*80}")
     print(f"Total Return: {overall_return:.4%}")
     print(f"Buy & Hold Return: {overall_buy_hold:.4%}")
@@ -657,6 +753,10 @@ def run_purged_walk_forward_optimization(df, config):
         'combined_equity': combined_test_results,
         'section_count': len(all_section_results),
         'purged': True,  # Mark as purged results
+        'regime_aware': regime_aware,
+        'precomputed_regimes': precompute_regimes,
+        'global_regimes': global_regimes,
+        'global_volatility': global_volatility,
         'parameter_importance': sensitivity_results.get('global_importance', {})
     }
     
@@ -1630,6 +1730,777 @@ def calculate_simple_fitness_score(metrics, config):
     
     return fitness_score
 
+def perform_regime_precomputation(df, config):
+    """
+    Precompute volatility regimes for the entire dataset using HMM.
+    """
+    # Get regime detection configuration
+    regime_config = config.get('WALK_FORWARD_CONFIG', {})
+    method = regime_config.get('precomputed_regime_method', 'hmm')
+    n_regimes = regime_config.get('precomputed_n_regimes', 3)
+    smoothing_period = regime_config.get('regime_smoothing', 5)
+    stability_period = regime_config.get('regime_stability_period', 48)
+    
+    # Calculate volatility for entire dataset
+    volatility = calculate_volatility(
+        df,
+        method=config.get('STRATEGY_CONFIG', {}).get('volatility', {}).get('methods', ['parkinson'])[0],
+        window=config.get('STRATEGY_CONFIG', {}).get('volatility', {}).get('lookback_periods', [20])[0]
+    )
+    
+    # Detect regimes using the specified method (preferring HMM)
+    print(f"Precomputing regimes for entire dataset using {method} with {n_regimes} regimes")
+    
+    try:
+        # Try HMM with multiple attempts and parameters to ensure robustness
+        regimes = detect_volatility_regimes(
+            df,
+            volatility,
+            method=method,
+            n_regimes=n_regimes,
+            smoothing_period=smoothing_period,
+            stability_period=stability_period,
+            verbose=True
+        )
+    except Exception as e:
+        print(f"Error in primary regime detection: {e}")
+        print("Falling back to kmeans for global regime detection")
+        regimes = detect_volatility_regimes(
+            df,
+            volatility,
+            method='kmeans',
+            n_regimes=n_regimes,
+            smoothing_period=smoothing_period,
+            stability_period=stability_period
+        )
+    
+    # Print regime distribution
+    print(f"\nGlobal regime distribution for the entire dataset:")
+    regime_counts = regimes.value_counts()
+    for regime_id, count in regime_counts.items():
+        print(f"Regime {regime_id}: {count} data points ({count/len(regimes)*100:.2f}%)")
+    
+    return regimes, volatility
+
+def generate_regime_aware_walk_forward_periods(start_date, end_date, regimes, config):
+    """
+    Generate regime-aware purged walk-forward periods to ensure sufficient data for each regime.
+    """
+    # Convert dates to pandas datetime
+    start = pd.to_datetime(start_date)
+    end = pd.to_datetime(end_date)
+    
+    # Extract basic configuration parameters
+    walk_forward_config = config.get('WALK_FORWARD_CONFIG', {})
+    window_type = walk_forward_config.get('window_type', 'expanding')
+    initial_training_days = walk_forward_config.get('initial_training_days', 365)
+    sliding_window_size = walk_forward_config.get('sliding_window_size', 365)
+    validation_days = walk_forward_config.get('validation_days', 45)
+    test_days = walk_forward_config.get('test_days', 90)
+    step_days = walk_forward_config.get('step_days', 90)
+    purge_days = walk_forward_config.get('purge_days', 30)
+    embargo_days = walk_forward_config.get('embargo_days', 30)
+    max_sections = walk_forward_config.get('max_sections', 25)
+    
+    # Extract regime-aware configuration parameters
+    min_regime_points = walk_forward_config.get('min_regime_points_per_section', 30)
+    adaptive_length = walk_forward_config.get('adaptive_section_length', True)
+    max_expansion = walk_forward_config.get('max_section_expansion', 30)
+    balanced_regimes = walk_forward_config.get('balanced_regime_sections', True)
+    
+    # Generate standard periods first (time-based)
+    standard_periods = generate_purged_walk_forward_periods(start_date, end_date, walk_forward_config)
+    
+    if not standard_periods:
+        raise ValueError("Failed to generate base walk-forward periods")
+    
+    # Now adjust periods to ensure sufficient regime representation
+    adjusted_periods = []
+    embargo_periods = []
+    
+    for i, (train_start, train_end, purge_start, val_start, val_end, test_start, test_end, embargo_end) in enumerate(standard_periods):
+        # Check regime representation in validation period
+        val_regimes = regimes[val_start:val_end]
+        val_regime_counts = val_regimes.value_counts()
+        
+        # Check regime representation in test period
+        test_regimes = regimes[test_start:test_end]
+        test_regime_counts = test_regimes.value_counts()
+        
+        # Check if any regime has insufficient representation
+        needs_adjustment = False
+        all_regimes = set(regimes.unique())
+        
+        # Check validation and test period regime counts
+        for regime_id in all_regimes:
+            if regime_id not in val_regime_counts or val_regime_counts[regime_id] < min_regime_points:
+                needs_adjustment = True
+                print(f"Section {i+1}: Validation period has insufficient data for regime {regime_id} "
+                     f"({val_regime_counts.get(regime_id, 0)} points)")
+            
+            if regime_id not in test_regime_counts or test_regime_counts[regime_id] < min_regime_points:
+                needs_adjustment = True
+                print(f"Section {i+1}: Test period has insufficient data for regime {regime_id} "
+                     f"({test_regime_counts.get(regime_id, 0)} points)")
+        
+        # If adjustment is needed and adaptive length is enabled
+        if needs_adjustment and adaptive_length:
+            # Try to expand test period first
+            print(f"Adjusting section {i+1} to ensure regime representation")
+            
+            # Calculate how much we can expand test period
+            next_section_start = train_start + timedelta(days=step_days) if i + 1 < len(standard_periods) else end
+            max_test_expansion = min(
+                max_expansion,
+                (next_section_start - test_end).days if next_section_start > test_end else 0
+            )
+            
+            if max_test_expansion > 0:
+                # Try expanding test period
+                expanded_test_end = test_end + timedelta(days=max_test_expansion)
+                expanded_embargo_end = expanded_test_end + timedelta(days=embargo_days)
+                
+                # Check if expanded test period improves regime representation
+                expanded_test_regimes = regimes[test_start:expanded_test_end]
+                expanded_test_counts = expanded_test_regimes.value_counts()
+                
+                improved = True
+                for regime_id in all_regimes:
+                    if regime_id not in expanded_test_counts or expanded_test_counts[regime_id] < min_regime_points:
+                        if regime_id not in test_regime_counts or expanded_test_counts.get(regime_id, 0) <= test_regime_counts.get(regime_id, 0):
+                            improved = False
+                
+                if improved:
+                    print(f"Expanded test period from {test_end} to {expanded_test_end} (+{max_test_expansion} days)")
+                    test_end = expanded_test_end
+                    embargo_end = expanded_embargo_end
+                    test_regimes = expanded_test_regimes
+                    test_regime_counts = expanded_test_counts
+            
+            # Check if we need to expand validation period
+            needs_val_adjustment = False
+            for regime_id in all_regimes:
+                if regime_id not in val_regime_counts or val_regime_counts[regime_id] < min_regime_points:
+                    needs_val_adjustment = True
+            
+            if needs_val_adjustment:
+                # Calculate how much we can expand validation period
+                max_val_expansion = min(
+                    max_expansion,
+                    (test_start - val_end).days if test_start > val_end else 0
+                )
+                
+                if max_val_expansion > 0:
+                    # Try expanding validation period
+                    expanded_val_end = val_end + timedelta(days=max_val_expansion)
+                    
+                    # Check if expanded validation period improves regime representation
+                    expanded_val_regimes = regimes[val_start:expanded_val_end]
+                    expanded_val_counts = expanded_val_regimes.value_counts()
+                    
+                    improved = True
+                    for regime_id in all_regimes:
+                        if regime_id not in expanded_val_counts or expanded_val_counts[regime_id] < min_regime_points:
+                            if regime_id not in val_regime_counts or expanded_val_counts.get(regime_id, 0) <= val_regime_counts.get(regime_id, 0):
+                                improved = False
+                    
+                    if improved:
+                        print(f"Expanded validation period from {val_end} to {expanded_val_end} (+{max_val_expansion} days)")
+                        val_end = expanded_val_end
+                        val_regimes = expanded_val_regimes
+                        val_regime_counts = expanded_val_counts
+                
+                # If validation end changed, update purge start and test start
+                purge_start = test_start - timedelta(days=purge_days)
+        
+        # Store adjusted period
+        adjusted_periods.append((
+            train_start, 
+            train_end,
+            purge_start,
+            val_start, 
+            val_end, 
+            test_start, 
+            test_end,
+            embargo_end
+        ))
+        
+        # Track this embargo period
+        embargo_periods.append((test_end, embargo_end))
+    
+    # Print summary of adjustments
+    print(f"\nGenerated {len(adjusted_periods)} regime-aware walk-forward periods")
+    for i, (train_start, train_end, purge_start, val_start, val_end, test_start, test_end, embargo_end) in enumerate(adjusted_periods):
+        print(f"Period {i+1}:")
+        print(f"  Training: {train_start.strftime('%Y-%m-%d')} to {train_end.strftime('%Y-%m-%d')} (purged from {purge_start.strftime('%Y-%m-%d')})")
+        print(f"  Validation: {val_start.strftime('%Y-%m-%d')} to {val_end.strftime('%Y-%m-%d')}")
+        print(f"  Testing: {test_start.strftime('%Y-%m-%d')} to {test_end.strftime('%Y-%m-%d')}")
+        
+        # Print regime distribution for this section
+        val_regimes = regimes[val_start:val_end]
+        test_regimes = regimes[test_start:test_end]
+        
+        print("  Validation regime distribution:")
+        val_counts = val_regimes.value_counts()
+        for regime_id in sorted(regimes.unique()):
+            count = val_counts.get(regime_id, 0)
+            print(f"    Regime {regime_id}: {count} points ({count/len(val_regimes)*100:.1f}% of validation)")
+        
+        print("  Test regime distribution:")
+        test_counts = test_regimes.value_counts()
+        for regime_id in sorted(regimes.unique()):
+            count = test_counts.get(regime_id, 0)
+            print(f"    Regime {regime_id}: {count} points ({count/len(test_regimes)*100:.1f}% of test)")
+    
+    return adjusted_periods
+
+def optimize_section_parameters_with_precomputed_regimes(train_df, val_df, test_start, config, section_index, previous_sections, global_regimes, global_volatility):
+    """
+    Optimize parameters for a walk-forward section using precomputed regimes.
+    """
+    print(f"\nOptimizing parameters for section {section_index+1} using precomputed regimes")
+    
+    # Get walk-forward configuration
+    walk_forward_config = config.get('WALK_FORWARD_CONFIG', {})
+    purge_days = walk_forward_config.get('purge_days', 30)
+    min_regime_data_points = walk_forward_config.get('min_regime_data_points', 50)
+    
+    # Apply purging to training data
+    purged_train_df = apply_purging_to_training_data(train_df, test_start, purge_days)
+    
+    # If too much data was purged, use original training data with a warning
+    if len(purged_train_df) < walk_forward_config.get('min_training_size', 365) / 2:
+        print(f"WARNING: Too much data purged. Using original training data with {len(train_df)} points")
+        purged_train_df = train_df
+    
+    # Get strategy configuration
+    strategy_config = config.get('STRATEGY_CONFIG', {})
+    
+    # Get precomputed regimes for this section
+    regimes = purged_train_df['precomputed_regime']
+    
+    # Ensure each regime has sufficient data
+    regimes = ensure_sufficient_regime_data(purged_train_df, regimes, min_regime_data_points)
+    
+    # Print regime distribution
+    n_regimes = len(regimes.unique())
+    print(f"\nUsing {n_regimes} precomputed regimes in purged training data")
+    regime_counts = regimes.value_counts()
+    for regime_id, count in regime_counts.items():
+        print(f"Regime {regime_id}: {count} data points ({count/len(regimes)*100:.2f}%)")
+    
+    # Optimize parameters for each regime separately using Optuna
+    regime_best_params = {}
+    regime_metrics = {}
+    regime_studies = {}  # Store studies for later analysis
+    
+    for regime_id in sorted(regimes.unique()):
+        # Create mask for this regime
+        regime_mask = (regimes == regime_id)
+        regime_count = regime_mask.sum()
+        
+        if regime_count < min_regime_data_points:
+            print(f"\nInsufficient data for regime {regime_id}: {regime_count} points")
+            print(f"Using default or prior parameters for regime {regime_id}")
+            # Try to find parameters from previous sections
+            found_prev_params = False
+            if previous_sections:
+                for prev_section in reversed(previous_sections):
+                    if 'regime_params' in prev_section and int(regime_id) in prev_section['regime_params']:
+                        regime_best_params[regime_id] = prev_section['regime_params'][int(regime_id)]
+                        print(f"  Using parameters from previous section for regime {regime_id}")
+                        found_prev_params = True
+                        break
+            
+            if not found_prev_params:
+                # Generate a default parameter set
+                param_grid = generate_parameter_grid(strategy_config, 
+                                                   strategy_config.get('cross_validation', {}).get('parameter_testing', {}))
+                regime_best_params[regime_id] = param_grid[0]
+            continue
+        
+        # Extract data for just this regime
+        regime_df = purged_train_df.loc[regime_mask].copy()
+        
+        print(f"\nOptimizing parameters for Regime {regime_id} using {regime_count} data points")
+        
+        # Generate parameter bounds
+        param_bounds = generate_parameter_bounds(strategy_config)
+        
+        # Determine number of trials based on available data points
+        base_n_trials = config.get('STRATEGY_CONFIG', {}).get('cross_validation', {}).get('parameter_testing', {}).get('n_random_combinations', 100)
+        
+        # Scale trials based on data size
+        data_size_factor = min(2.0, max(0.5, regime_count / 500))
+        n_trials = int(base_n_trials * data_size_factor)
+        n_trials = min(300, max(50, n_trials))  # Cap between 50 and 300 trials
+        
+        print(f"Running {n_trials} Optuna trials for regime {regime_id}")
+        
+        # Run Optuna optimization
+        best_params, study = optimize_parameters_with_optuna(
+            regime_df, 
+            param_bounds, 
+            strategy_config,
+            n_trials=n_trials,
+            regime_id=regime_id
+        )
+        
+        # Store the results
+        if best_params:
+            # Store results and print metrics
+            # (existing code)
+            regime_best_params[regime_id] = best_params
+            regime_studies[regime_id] = study
+        else:
+            # Use default parameters
+            param_grid = generate_parameter_grid(
+                strategy_config, 
+                strategy_config.get('cross_validation', {}).get('parameter_testing', {})
+            )
+            regime_best_params[regime_id] = param_grid[0]
+    
+    # Ensure all regimes have parameters
+    # Ensure all regimes have parameters
+    for regime_id in sorted(regimes.unique()):
+        if regime_id not in regime_best_params:
+            print(f"Warning: No parameters for regime {regime_id}, using default parameters")
+            param_grid = generate_parameter_grid(
+                strategy_config, 
+                strategy_config.get('cross_validation', {}).get('parameter_testing', {})
+            )
+            regime_best_params[regime_id] = param_grid[0]
+    
+    # Validate on validation data with precomputed regimes
+    print("\nValidating regime-specific parameters on validation data")
+    
+    # Set the precomputed regime in validation data
+    val_df_with_regime = val_df.copy()
+    val_df_with_regime['precomputed_regime'] = global_regimes.loc[val_df.index]
+    
+    # Apply enhanced SMA strategy with precomputed regimes
+    val_result_df = apply_enhanced_sma_strategy_with_precomputed_regimes(
+        val_df_with_regime,
+        regime_best_params,
+        strategy_config
+    )
+    
+    # Calculate metrics
+    val_metrics = calculate_advanced_metrics(val_result_df['strategy_returns'], val_result_df['strategy_cumulative'])
+    
+    # Print validation results
+    print(f"\nValidation Results:")
+    print(f"Total Return: {val_metrics['total_return']:.4%}")
+    print(f"Sharpe Ratio: {val_metrics['sharpe_ratio']:.4f}")
+    print(f"Max Drawdown: {val_metrics['max_drawdown']:.4%}")
+    
+    # Calculate regime-specific performance in validation set
+    validation_regime_metrics = {}
+    for regime_id in sorted(regimes.unique()):
+        regime_mask = (val_result_df['regime'] == regime_id)
+        if regime_mask.any():
+            regime_returns = val_result_df.loc[regime_mask, 'strategy_returns']
+            if len(regime_returns) > 0:
+                regime_cumulative = (1 + regime_returns).cumprod()
+                regime_return = regime_cumulative.iloc[-1] - 1
+                print(f"  Regime {regime_id} Validation Return: {regime_return:.4%}")
+                
+                # Calculate Sharpe ratio
+                try:
+                    from performance_metrics import calculate_sharpe_ratio
+                    regime_sharpe = calculate_sharpe_ratio(regime_returns)
+                    print(f"  Regime {regime_id} Validation Sharpe: {regime_sharpe:.4f}")
+                    validation_regime_metrics[regime_id] = {
+                        'return': regime_return,
+                        'sharpe': regime_sharpe
+                    }
+                except Exception as e:
+                    print(f"  Error calculating regime-specific metrics: {e}")
+    
+    # Store overall metrics for return
+    for regime_id, params in regime_best_params.items():
+        params['validation_score'] = val_metrics['sharpe_ratio']
+        
+        # Add validation metrics for this regime
+        if regime_id in validation_regime_metrics:
+            params['validation_regime_return'] = validation_regime_metrics[regime_id]['return']
+            params['validation_regime_sharpe'] = validation_regime_metrics[regime_id]['sharpe']
+    
+    return regime_best_params, regime_studies
+
+def apply_enhanced_sma_strategy_with_precomputed_regimes(df, regime_params, strategy_config):
+    """
+    Apply enhanced SMA strategy using precomputed regimes with improved error handling.
+    
+    Parameters:
+        df (DataFrame): DataFrame with price data and precomputed_regime column
+        regime_params (dict): Dictionary of parameters for each regime
+        strategy_config (dict): Strategy configuration
+        
+    Returns:
+        DataFrame: DataFrame with strategy results
+    """
+    import numpy as np
+    
+    # Make a copy of the input dataframe to avoid modifying the original
+    result_df = df.copy()
+    
+    # Get precomputed regimes from the dataframe
+    regimes = result_df['precomputed_regime']
+    
+    # Determine which price column to use (handle different column names)
+    price_column = 'close_price'  # Default to your database's column name
+    high_column = 'high_price'
+    low_column = 'low_price'
+    
+    # Check which regimes are actually present in the data vs in parameters
+    present_regimes = sorted(regimes.unique())
+    param_regimes = sorted([int(r) if isinstance(r, str) else r for r in regime_params.keys()])
+    print(f"Regimes present in data: {present_regimes}")
+    print(f"Regimes in parameters: {param_regimes}")
+    
+    # Check if the price column exists
+    if price_column not in result_df.columns:
+        # Try alternative names
+        for alt_name in ['close', 'price', 'Close', 'ClosePrice']:
+            if alt_name in result_df.columns:
+                price_column = alt_name
+                break
+        else:
+            raise ValueError(f"Missing required price column. Available columns: {result_df.columns.tolist()}")
+    
+    # Ensure 'returns' column exists with NaN handling
+    if 'returns' not in result_df.columns:
+        # Calculate returns based on close price
+        result_df['returns'] = result_df[price_column].pct_change().fillna(0)
+    
+    # Initialize strategy columns
+    result_df['position'] = 0.0
+    result_df['signal'] = 0
+    result_df['strategy_returns'] = 0.0
+    result_df['regime'] = regimes
+    result_df['trailing_stop_exits'] = 0
+    result_df['profit_taking_exits'] = 0
+    result_df['max_drawdown_exits'] = 0
+    result_df['managed_position'] = 0.0
+    result_df['filtered_signal'] = 0
+    result_df['raw_signal'] = 0
+    
+    # Apply regime-specific strategy
+    for regime_id in regime_params:
+        # Convert regime_id to int if it's a string
+        regime_id_int = int(regime_id) if isinstance(regime_id, str) else regime_id
+        
+        # Create mask for this regime
+        regime_mask = (regimes == regime_id_int)
+        regime_count = regime_mask.sum()
+        
+        if regime_count == 0:
+            print(f"No data points found for regime {regime_id_int}")
+            continue
+        
+        print(f"Processing regime {regime_id_int} with {regime_count} data points")
+        
+        # Extract data for just this regime
+        regime_df = result_df.loc[regime_mask].copy()
+        
+        # Get parameters for this regime
+        params = regime_params[regime_id]
+        
+        # Add back some preceding data for SMA calculation (lookback window)
+        max_window = max(
+            params.get('long_window', 55), 
+            params.get('vol_lookback', 20) * 2
+        )
+        
+        # Find preceding data safely without exact index matching
+        regime_start_date = regime_df.index[0]
+        
+        # Get all data up to the start of this regime for lookback
+        preceding_data = df[df.index < regime_start_date].iloc[-max_window:].copy() if max_window > 0 else pd.DataFrame()
+        
+        # Concatenate data with safe handling for empty dataframes
+        if not preceding_data.empty:
+            extended_df = pd.concat([preceding_data, regime_df])
+        else:
+            extended_df = regime_df
+        
+        # Calculate technical indicators using the specified parameters
+        short_window = params.get('short_window', 21)
+        long_window = params.get('long_window', 55)
+        
+        # Calculate SMAs using the correct price column with NaN handling
+        extended_df['short_sma'] = extended_df[price_column].rolling(window=short_window).mean()
+        extended_df['long_sma'] = extended_df[price_column].rolling(window=long_window).mean()
+        
+        # Calculate trend strength with NaN protection
+        extended_df['trend_strength'] = (
+            extended_df['short_sma'] / extended_df['long_sma'] - 1
+        ).abs().fillna(0)
+        
+        # Calculate volatility with improved error handling
+        vol_method = params.get('vol_method', 'parkinson')
+        vol_lookback = params.get('vol_lookback', 20)
+        
+        try:
+            from volatility import calculate_volatility
+            volatility = calculate_volatility(
+                extended_df,
+                method=vol_method,
+                window=vol_lookback
+            )
+            extended_df['volatility'] = volatility
+        except Exception as e:
+            print(f"Error calculating volatility: {e}")
+            # Fallback to simple volatility calculation
+            extended_df['volatility'] = extended_df[price_column].pct_change().rolling(window=vol_lookback).std() * np.sqrt(252)
+        
+        # Ensure volatility has no NaN or zero values
+        extended_df['volatility'] = extended_df['volatility'].fillna(
+            extended_df['volatility'].median() if not extended_df['volatility'].isna().all() else 0.01
+        )
+        extended_df['volatility'] = extended_df['volatility'].replace(0, 0.01)  # Replace zeros with small positive value
+        
+        # Calculate signals based on SMA crossovers and trend strength
+        trend_threshold = params.get('trend_strength_threshold', 0.01)
+        
+        # Calculate raw signals first (before applying risk management)
+        extended_df['raw_signal'] = 0
+        
+        # Buy signal: short SMA crosses above long SMA with sufficient trend strength
+        buy_mask = (
+            extended_df['short_sma'].notna() & 
+            extended_df['long_sma'].notna() & 
+            (extended_df['short_sma'] > extended_df['long_sma']) &
+            (extended_df['trend_strength'] > trend_threshold)
+        )
+        extended_df.loc[buy_mask, 'raw_signal'] = 1
+        
+        # Sell signal: short SMA crosses below long SMA or trend weakens
+        sell_mask = (
+            extended_df['short_sma'].notna() & 
+            extended_df['long_sma'].notna() & 
+            ((extended_df['short_sma'] < extended_df['long_sma']) |
+            (extended_df['trend_strength'] < trend_threshold * 0.5))
+        )
+        extended_df.loc[sell_mask, 'raw_signal'] = -1
+        
+        # Copy raw signals to filtered signals (will be modified by risk management)
+        extended_df['filtered_signal'] = extended_df['raw_signal'].copy()
+        
+        # Apply minimum holding period if specified
+        min_holding = params.get('min_holding_period', 1)
+        if min_holding > 1:
+            # Track position entry time
+            in_position = False
+            entry_time = 0
+            
+            for i in range(len(extended_df)):
+                if i >= len(extended_df.index):
+                    break
+                    
+                curr_idx = extended_df.index[i]
+                curr_signal = extended_df.loc[curr_idx, 'filtered_signal']
+                
+                if not in_position and curr_signal > 0:
+                    # Enter position
+                    in_position = True
+                    entry_time = i
+                    
+                elif in_position:
+                    # Check if we've held for minimum period
+                    if i - entry_time < min_holding and curr_signal < 0:
+                        # Override exit signal if we haven't held long enough
+                        if i > 0 and i-1 < len(extended_df.index):
+                            extended_df.loc[curr_idx, 'filtered_signal'] = extended_df.loc[extended_df.index[i-1], 'filtered_signal']
+                    elif curr_signal <= 0:
+                        # Exit position
+                        in_position = False
+        
+        # Apply risk management parameters
+        target_vol = params.get('target_vol', 0.2)
+        max_position_size = params.get('max_position_size', 1.0)
+        min_position_size = params.get('min_position_size', 0.0)
+        
+        # Position sizing based on volatility targeting
+        extended_df['position_size'] = target_vol / extended_df['volatility'].clip(0.001)
+        extended_df['position_size'] = extended_df['position_size'].clip(min_position_size, max_position_size)
+        
+        # Initialize managed position (to be modified by risk management)
+        extended_df['managed_position'] = extended_df['filtered_signal'] * extended_df['position_size']
+        
+        # Apply trailing stops if enabled
+        if params.get('trailing_stop_activation', 0) > 0:
+            # Apply trailing stop logic
+            trailing_activation = params.get('trailing_stop_activation', 0.05)
+            trailing_distance = params.get('trailing_stop_distance', 0.02)
+            
+            # Initialize trailing stop variables
+            in_position = False
+            entry_price = 0
+            trailing_level = 0
+            
+            for i in range(len(extended_df)):
+                if i >= len(extended_df.index):
+                    break
+                    
+                curr_idx = extended_df.index[i]
+                curr_price = extended_df.loc[curr_idx, price_column]
+                curr_position = extended_df.loc[curr_idx, 'managed_position']
+                
+                if not in_position and curr_position > 0:
+                    # Enter position
+                    in_position = True
+                    entry_price = curr_price
+                    trailing_level = curr_price * (1 - trailing_distance)
+                    
+                elif in_position:
+                    # Update trailing stop if price increases
+                    if curr_price > entry_price * (1 + trailing_activation):
+                        new_stop = curr_price * (1 - trailing_distance)
+                        trailing_level = max(trailing_level, new_stop)
+                    
+                    # Check if we hit the trailing stop
+                    if curr_price < trailing_level:
+                        # Exit position due to trailing stop
+                        extended_df.loc[curr_idx, 'managed_position'] = 0
+                        extended_df.loc[curr_idx, 'trailing_stop_exits'] = 1
+                        in_position = False
+                    elif curr_position == 0:
+                        # Exit position due to signal
+                        in_position = False
+        
+        # Apply stop loss if enabled
+        if params.get('max_drawdown_exit', 0) > 0:
+            max_drawdown = params.get('max_drawdown_exit', 0.15)
+            
+            # Track drawdown for each position
+            in_position = False
+            entry_price = 0
+            
+            for i in range(len(extended_df)):
+                if i >= len(extended_df.index):
+                    break
+                    
+                curr_idx = extended_df.index[i]
+                curr_price = extended_df.loc[curr_idx, price_column]
+                curr_position = extended_df.loc[curr_idx, 'managed_position']
+                
+                if not in_position and curr_position > 0:
+                    # Enter position
+                    in_position = True
+                    entry_price = curr_price
+                    
+                elif in_position:
+                    # Calculate current drawdown
+                    drawdown = (curr_price / entry_price - 1) * -1
+                    
+                    # Exit if drawdown exceeds threshold
+                    if drawdown > max_drawdown:
+                        extended_df.loc[curr_idx, 'managed_position'] = 0
+                        extended_df.loc[curr_idx, 'max_drawdown_exits'] = 1
+                        in_position = False
+                    elif curr_position == 0:
+                        # Exit position
+                        in_position = False
+        
+        # Apply take profit if enabled
+        if params.get('profit_taking_threshold', 0) > 0:
+            profit_threshold = params.get('profit_taking_threshold', 0.1)
+            
+            # Track profit for each position
+            in_position = False
+            entry_price = 0
+            
+            for i in range(len(extended_df)):
+                if i >= len(extended_df.index):
+                    break
+                    
+                curr_idx = extended_df.index[i]
+                curr_price = extended_df.loc[curr_idx, price_column]
+                curr_position = extended_df.loc[curr_idx, 'managed_position']
+                
+                if not in_position and curr_position > 0:
+                    # Enter position
+                    in_position = True
+                    entry_price = curr_price
+                    
+                elif in_position:
+                    # Calculate current profit
+                    profit_pct = curr_price / entry_price - 1
+                    
+                    # Take profit if threshold is reached
+                    if profit_pct > profit_threshold:
+                        extended_df.loc[curr_idx, 'managed_position'] = 0
+                        extended_df.loc[curr_idx, 'profit_taking_exits'] = 1
+                        in_position = False
+                    elif curr_position == 0:
+                        # Exit position
+                        in_position = False
+        
+        # Use managed position for final position
+        extended_df['position'] = extended_df['managed_position']
+        
+        # Ensure no NaN values in key columns
+        for col in ['position', 'signal', 'managed_position', 'filtered_signal', 'raw_signal']:
+            if col in extended_df.columns:
+                extended_df[col] = extended_df[col].fillna(0)
+        
+        # Use direct copying for regime indices to avoid missing data
+        for idx in regime_df.index:
+            if idx in extended_df.index:
+                for col in ['signal', 'position', 'raw_signal', 'filtered_signal', 'managed_position', 
+                           'trailing_stop_exits', 'profit_taking_exits', 'max_drawdown_exits', 'volatility']:
+                    if col in extended_df.columns and col in result_df.columns:
+                        result_df.loc[idx, col] = extended_df.loc[idx, col]
+    
+    # Calculate strategy returns safely
+    result_df['position'] = result_df['position'].fillna(0)
+    result_df['returns'] = result_df['returns'].fillna(0)
+    result_df['strategy_returns'] = result_df['position'].shift(1).fillna(0) * result_df['returns']
+    
+    # Check for NaN values before calculating cumulative returns
+    nan_count = result_df['strategy_returns'].isna().sum()
+    if nan_count > 0:
+        print(f"Warning: {nan_count} NaN values found in strategy returns. Filling with zeros.")
+        result_df['strategy_returns'] = result_df['strategy_returns'].fillna(0)
+    
+    # Calculate cumulative returns safely
+    if 'strategy_cumulative' not in result_df.columns:
+        result_df['strategy_cumulative'] = (1 + result_df['strategy_returns']).cumprod()
+    
+    # Check for NaN values in cumulative returns
+    nan_count = result_df['strategy_cumulative'].isna().sum()
+    if nan_count > 0:
+        print(f"Warning: {nan_count} NaN values found in strategy_cumulative. Setting to 1.0")
+        result_df['strategy_cumulative'] = result_df['strategy_cumulative'].fillna(1.0)
+    
+    # Calculate buy & hold returns
+    if 'buy_hold_cumulative' not in result_df.columns:
+        result_df['buy_hold_cumulative'] = (1 + result_df['returns']).cumprod()
+        # Check for NaN values in buy_hold_cumulative
+        nan_count = result_df['buy_hold_cumulative'].isna().sum()
+        if nan_count > 0:
+            print(f"Warning: {nan_count} NaN values found in buy_hold_cumulative. Setting to 1.0")
+            result_df['buy_hold_cumulative'] = result_df['buy_hold_cumulative'].fillna(1.0)
+    
+    # Print stats about the final result
+    print("\nFinal data check:")
+    print(f"Total rows: {len(result_df)}")
+    print(f"NaN in strategy_returns: {result_df['strategy_returns'].isna().sum()}")
+    print(f"NaN in strategy_cumulative: {result_df['strategy_cumulative'].isna().sum()}")
+    print(f"NaN in position: {result_df['position'].isna().sum()}")
+    print(f"Min strategy_cumulative: {result_df['strategy_cumulative'].min()}")
+    print(f"Max strategy_cumulative: {result_df['strategy_cumulative'].max()}")
+    
+    # Calculate overall return for validation
+    first_value = result_df['strategy_cumulative'].iloc[0]
+    last_value = result_df['strategy_cumulative'].iloc[-1]
+    overall_return = (last_value / first_value) - 1
+    print(f"Overall calculated return: {overall_return:.4%}")
+    
+    return result_df
+
 def ensure_sufficient_regime_data(df, regimes, min_data_points=50):
     """
     Ensure each regime has sufficient data points, merging regimes if necessary.
@@ -1719,7 +2590,7 @@ def ensure_sufficient_regime_data(df, regimes, min_data_points=50):
 def evaluate_section_performance(test_df, section_params, config):
     """
     Evaluate performance on a purged walk-forward section.
-    Enhanced to store regime-specific performance metrics.
+    Enhanced to store regime-specific performance metrics with improved NaN handling.
     
     Parameters:
         test_df (DataFrame): Test data
@@ -1729,13 +2600,46 @@ def evaluate_section_performance(test_df, section_params, config):
     Returns:
         dict: Performance metrics and results
     """
+    import numpy as np
+    
     # Apply strategy with optimized parameters
     result_df = apply_enhanced_sma_strategy_regime_specific(test_df, section_params, config.get('STRATEGY_CONFIG', {}))
+    
+    # Check for and fix NaN values in key columns
+    for col in ['strategy_returns', 'returns']:
+        if col in result_df.columns:
+            nan_count = result_df[col].isna().sum()
+            if nan_count > 0:
+                print(f"Warning: {nan_count} NaN values found in {col}. Filling with zeros.")
+                result_df[col] = result_df[col].fillna(0)
+    
+    # Ensure cumulative returns are calculated correctly
+    if 'strategy_returns' in result_df.columns:
+        # Recalculate cumulative returns to ensure no NaN propagation
+        result_df['strategy_cumulative'] = (1 + result_df['strategy_returns']).cumprod()
+        result_df['buy_hold_cumulative'] = (1 + result_df['returns']).cumprod()
     
     # Calculate overall performance metrics
     metrics = calculate_advanced_metrics(result_df['strategy_returns'], result_df['strategy_cumulative'])
     
-    # Calculate buy & hold metrics
+    # Double-check total return calculation
+    if np.isnan(metrics.get('total_return', np.nan)):
+        initial_value = result_df['strategy_cumulative'].iloc[0]
+        final_value = result_df['strategy_cumulative'].iloc[-1]
+        
+        if not np.isnan(initial_value) and not np.isnan(final_value) and initial_value > 0:
+            total_return = (final_value / initial_value) - 1
+            print(f"Fixing NaN total return with calculated value: {total_return:.4%}")
+            metrics['total_return'] = total_return
+        else:
+            print(f"Cannot calculate total return. Initial: {initial_value}, Final: {final_value}")
+            metrics['total_return'] = 0.0
+    
+    # Calculate buy & hold metrics with NaN protection
+    if np.isnan(result_df['buy_hold_cumulative'].iloc[-1]):
+        print("Warning: NaN in buy_hold_cumulative. Recalculating.")
+        result_df['buy_hold_cumulative'] = (1 + result_df['returns'].fillna(0)).cumprod()
+    
     buy_hold_return = result_df['buy_hold_cumulative'].iloc[-1] - 1
     
     # Calculate regime-specific performance
@@ -1743,40 +2647,66 @@ def evaluate_section_performance(test_df, section_params, config):
     regime_metrics = {}
     
     for regime_id in sorted(section_params.keys()):
-        regime_mask = (regimes == regime_id)
+        regime_id_int = int(regime_id) if isinstance(regime_id, str) else regime_id
+        regime_mask = (regimes == regime_id_int)
+        
         if regime_mask.any():
-            regime_returns = result_df.loc[regime_mask, 'strategy_returns']
+            regime_returns = result_df.loc[regime_mask, 'strategy_returns'].fillna(0)
             
             if len(regime_returns) > 0:
-                # Calculate metrics for this regime
+                # Calculate metrics for this regime with NaN handling
                 regime_cumulative = (1 + regime_returns).cumprod()
-                regime_specific_metrics = calculate_advanced_metrics(regime_returns, regime_cumulative)
-                regime_metrics[regime_id] = regime_specific_metrics
+                
+                try:
+                    regime_specific_metrics = calculate_advanced_metrics(regime_returns, regime_cumulative)
+                    
+                    # Verify total return calculation for regime
+                    if np.isnan(regime_specific_metrics.get('total_return', np.nan)):
+                        if len(regime_cumulative) > 0:
+                            regime_return = regime_cumulative.iloc[-1] - 1
+                            regime_specific_metrics['total_return'] = regime_return
+                        else:
+                            regime_specific_metrics['total_return'] = 0.0
+                    
+                    regime_metrics[regime_id_int] = regime_specific_metrics
+                except Exception as e:
+                    print(f"Error calculating metrics for regime {regime_id_int}: {e}")
+                    # Create basic metrics if calculation fails
+                    if len(regime_cumulative) > 0:
+                        total_return = regime_cumulative.iloc[-1] - 1 if not np.isnan(regime_cumulative.iloc[-1]) else 0.0
+                    else:
+                        total_return = 0.0
+                        
+                    regime_metrics[regime_id_int] = {
+                        'total_return': total_return,
+                        'sharpe_ratio': 0.0,
+                        'max_drawdown': 0.0
+                    }
     
     # Print summary
     print(f"\nSection Test Results:")
-    print(f"Total Return: {metrics['total_return']:.4%}")
-    print(f"Annualized Return: {metrics['annualized_return']:.4%}")
-    print(f"Sharpe Ratio: {metrics['sharpe_ratio']:.4f}")
-    print(f"Max Drawdown: {metrics['max_drawdown']:.4%}")
-    print(f"Win Rate: {metrics['win_rate']:.4%}")
+    print(f"Total Return: {metrics.get('total_return', 0):.4%}")
+    print(f"Annualized Return: {metrics.get('annualized_return', 0):.4%}")
+    print(f"Sharpe Ratio: {metrics.get('sharpe_ratio', 0):.4f}")
+    print(f"Max Drawdown: {metrics.get('max_drawdown', 0):.4%}")
+    print(f"Win Rate: {metrics.get('win_rate', 0):.4%}")
     print(f"Buy & Hold Return: {buy_hold_return:.4%}")
-    print(f"Outperformance: {metrics['total_return'] - buy_hold_return:.4%}")
+    print(f"Outperformance: {metrics.get('total_return', 0) - buy_hold_return:.4%}")
     
     # Print regime-specific results
     print("\nRegime-Specific Results:")
     for regime_id, regime_metric in regime_metrics.items():
         print(f"Regime {regime_id}:")
-        print(f"  Return: {regime_metric['total_return']:.4%}")
-        print(f"  Sharpe: {regime_metric['sharpe_ratio']:.4f}")
-        print(f"  Max DD: {regime_metric['max_drawdown']:.4%}")
+        print(f"  Return: {regime_metric.get('total_return', 0):.4%}")
+        print(f"  Sharpe: {regime_metric.get('sharpe_ratio', 0):.4f}")
+        print(f"  Max DD: {regime_metric.get('max_drawdown', 0):.4%}")
     
     return {
         'metrics': metrics,
         'regime_params': section_params,
         'regime_metrics': regime_metrics,
         'buy_hold_return': buy_hold_return,
-        'outperformance': metrics['total_return'] - buy_hold_return
+        'outperformance': metrics.get('total_return', 0) - buy_hold_return
     }
 
 def save_section_results(section_results, config, section_index, purged=True):

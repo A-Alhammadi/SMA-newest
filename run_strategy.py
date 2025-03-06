@@ -10,8 +10,10 @@ from datetime import datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Try to import our modules - only import what we actually use
+# Try to import our modules - only import what we actually use
 try:
     from purged_walk_forward import run_purged_walk_forward_optimization
+    from visualization import plot_enhanced_results_with_regimes, plot_enhanced_results_regime_specific, analyze_regime_distributions
 except ImportError as e:
     print(f"Error: Could not import required modules: {e}")
     print("Please ensure purged_walk_forward.py and all its dependencies are in the current directory.")
@@ -132,6 +134,28 @@ def evaluate_strategy_with_best_params(df, best_params, config):
     
     return result_df, metrics
 
+def evaluate_strategy_with_precomputed_regimes(df, best_params, config):
+    """Evaluate the strategy on the entire dataset using the best parameters and precomputed regimes."""
+    # Apply strategy with best parameters and precomputed regimes
+    from purged_walk_forward import apply_enhanced_sma_strategy_with_precomputed_regimes
+    from performance_metrics import calculate_advanced_metrics
+    
+    # Print parameter summary
+    print("\nBest parameters summary for precomputed regimes:")
+    for regime_id, params in best_params.items():
+        print(f"Regime {regime_id}:")
+        for key in ['short_window', 'long_window', 'trend_strength_threshold']:
+            if key in params:
+                print(f"  {key}: {params[key]}")
+    
+    # Apply strategy with best parameters and precomputed regimes
+    result_df = apply_enhanced_sma_strategy_with_precomputed_regimes(df, best_params, config['STRATEGY_CONFIG'])
+    
+    # Calculate performance metrics
+    metrics = calculate_advanced_metrics(result_df['strategy_returns'], result_df['strategy_cumulative'])
+    
+    return result_df, metrics
+
 def save_best_regime_results(best_params, result_df, metrics, config):
     """Save best regime parameters and performance to a file."""
     from datetime import datetime
@@ -246,11 +270,10 @@ def save_best_regime_results(best_params, result_df, metrics, config):
     return best_params_file
 
 # Modified main try-except block:
-# Modified main try-except block:
 try:
     start_time = time.time()
     
-    print("Running purged walk-forward optimization...")
+    print("Running regime-aware purged walk-forward optimization...")
     
     # Import database handler to fetch data
     from database import DatabaseHandler
@@ -258,6 +281,7 @@ try:
     
     # Get complete data
     from enhanced_config import TRAINING_START, TESTING_END, CURRENCY
+    print(f"Fetching historical data for {CURRENCY} from {TRAINING_START} to {TESTING_END}...")
     full_df = db.get_historical_data(CURRENCY, TRAINING_START, TESTING_END)
     
     # Create complete config
@@ -266,7 +290,7 @@ try:
         'STRATEGY_CONFIG': STRATEGY_CONFIG,
         'WALK_FORWARD_CONFIG': WALK_FORWARD_CONFIG,
         'LEARNING_CONFIG': LEARNING_CONFIG,
-        'CURRENCY': CURRENCY  # Add currency for file naming
+        'CURRENCY': CURRENCY
     }
     
     # Run purged walk-forward optimization
@@ -277,13 +301,38 @@ try:
     best_params = extract_best_regime_parameters(overall_results['section_results'])
     
     # Evaluate strategy with best parameters
-    print("\nEvaluating strategy with best parameters on entire period...")
-    result_df, metrics = evaluate_strategy_with_best_params(full_df, best_params, full_config)
+    if 'precomputed_regimes' in overall_results and overall_results['precomputed_regimes']:
+        # Add precomputed regimes to the full dataset for final evaluation
+        print("\nPreparing data with precomputed regimes for final evaluation...")
+        eval_df = full_df.copy()
+        eval_df['precomputed_regime'] = overall_results['global_regimes']
+        
+        # Evaluate with precomputed regimes
+        print("\nEvaluating strategy with best parameters on entire period using precomputed regimes...")
+        result_df, metrics = evaluate_strategy_with_precomputed_regimes(eval_df, best_params, full_config)
+    else:
+        # Standard evaluation
+        print("\nEvaluating strategy with best parameters on entire period...")
+        result_df, metrics = evaluate_strategy_with_best_params(full_df, best_params, full_config)
     
     # Save results
     print("\nSaving best regime results...")
     best_params_file = save_best_regime_results(best_params, result_df, metrics, full_config)
     print(f"Best regime results saved to {best_params_file}")
+    
+    # Create an enhanced visualization with regime information
+    print("\nCreating enhanced visualization...")
+    if 'global_regimes' in overall_results:
+        # Use precomputed regimes for visualization
+        plot_enhanced_results_with_regimes(result_df, best_params, metrics, 
+                                          overall_results['global_regimes'], full_config)
+    else:
+        # Standard visualization
+        plot_enhanced_results_regime_specific(result_df, {'regime_params': best_params}, metrics)
+    
+    # Analyze regime transitions and distributions
+    print("\nAnalyzing regime distributions and transitions...")
+    analyze_regime_distributions(result_df, best_params, full_config)
     
     # Close database connection
     db.close()
@@ -293,6 +342,8 @@ try:
     print(f"  Total Return: {overall_results['overall_return']:.2%}")
     print(f"  Buy & Hold Return: {overall_results['overall_buy_hold']:.2%}")
     print(f"  Outperformance: {overall_results['overall_outperformance']:.2%}")
+    print(f"  Sharpe Ratio: {overall_results['overall_sharpe']:.2f}")
+    print(f"  Max Drawdown: {overall_results['overall_max_drawdown']:.2%}")
     print(f"  Sections: {overall_results['section_count']}")
     
     # Print best parameters results
@@ -300,6 +351,19 @@ try:
     print(f"  Total Return: {metrics['total_return']:.2%}")
     print(f"  Buy & Hold Return: {result_df['buy_hold_cumulative'].iloc[-1] - 1:.2%}")
     print(f"  Outperformance: {metrics['total_return'] - (result_df['buy_hold_cumulative'].iloc[-1] - 1):.2%}")
+    print(f"  Sharpe Ratio: {metrics['sharpe_ratio']:.2f}")
+    
+    # Print regime-specific performance
+    print("\nRegime-Specific Performance:")
+    regimes = sorted(best_params.keys())
+    for regime_id in regimes:
+        regime_mask = (result_df['regime'] == regime_id)
+        if regime_mask.any():
+            regime_returns = result_df.loc[regime_mask, 'strategy_returns']
+            if len(regime_returns) > 0:
+                regime_return = (1 + regime_returns).cumprod().iloc[-1] - 1
+                print(f"  Regime {regime_id}: Return={regime_return:.2%}, "
+                      f"Params: SMA({best_params[regime_id].get('short_window')}/{best_params[regime_id].get('long_window')})")
     
     end_time = time.time()
     duration = (end_time - start_time) / 60
@@ -318,6 +382,6 @@ finally:
         DatabaseHandler.shutdown_pool()
     except Exception as e:
         print(f"Error shutting down database pool: {e}")
-        
+    
 print("\nLog file saved to:", log_file)
 print("=" * 80)

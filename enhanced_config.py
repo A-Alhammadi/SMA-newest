@@ -44,8 +44,19 @@ WALK_FORWARD_CONFIG = {
     'max_sections': 25,                # Maximum number of walk-forward sections to process
     'save_sections': True,             # Save results for each walk-forward section
     'min_regime_data_points': 50,      # Minimum data points required for a regime to be valid
+# New regime-aware parameters
+    'regime_aware_sections': True,               # Enable regime-aware section selection
+    'precompute_regimes': True,                  # Precompute regimes once for entire dataset
+    'precomputed_regime_method': 'hmm',          # Method to use for precomputed regimes (focus on HMM)
+    'precomputed_n_regimes': 3,                  # Number of regimes for precomputation
+    'min_regime_points_per_section': 30,         # Minimum data points per regime in each section
+    'adaptive_section_length': True,             # Allow sections to expand to meet regime requirements
+    'max_section_expansion': 30,                 # Maximum days to expand a section if needed
+    'balanced_regime_sections': True,            # Try to balance regime representation
+    'regime_importance_weights': [1.0, 1.0, 1.0],  # Relative importance of each regime
+    'allow_section_merging': True,               # Allow merging sections if needed
+    'min_section_length_days': 45,               # Minimum section length even if regimes are unbalanced
 }
-
 ############################################################
 #                  LEARNING PARAMETERS                     #
 ############################################################
@@ -110,10 +121,10 @@ STRATEGY_CONFIG = {
     
     # Risk management settings
     'risk_management': {
-        'target_volatility': [0.25, 0.35, 0.45, 0.55, 0.65],  # More volatility targets
+        'target_volatility': [0.35, 0.45, 0.55, 0.65, 0.7, 0.75],  # More volatility targets
         'max_position_size': [1.0],  # Position size options
         'min_position_size': [0.2, 0.25, 0.3, 0.35],  # Min position options
-        'max_drawdown_exit': [0.1, 0.12, 0.15, 0.18, 0.2],  # More exit thresholds
+        'max_drawdown_exit': [0.1, 0.15, 0.2, 0.22, 0.25, 0.3],  # More exit thresholds
         'profit_taking_threshold': [0.1, 0.12, 0.15, 0.18, 0.2, 0.25, 0.3, 0.35],  # More profit targets
         'trailing_stop_activation': [0.03, 0.05, 0.08, 0.1, 0.12, 0.15],  # More activation levels
         'trailing_stop_distance': [0.01, 0.02, 0.03, 0.04, 0.05, 0.07],  # More trailing distances
@@ -125,7 +136,7 @@ STRATEGY_CONFIG = {
         'parameter_testing': {
             'method': 'optuna',  # Changed from 'greedy' to 'optuna'
             'n_trials': 20000,  # Number of Optuna trials per regime optimization
-            'timeout': 450,  # Maximum seconds per optimization (optional)
+            'timeout': 10,  # Maximum seconds per optimization (optional)
             'n_random_combinations': 50000,  # Still used for fallback if Optuna fails
             'max_combinations': 500000,  # Maximum number of combinations for fallback
             'optimize_risk_params': True,  # Whether to optimize risk params or use defaults

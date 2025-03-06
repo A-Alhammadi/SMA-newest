@@ -7,18 +7,9 @@ from sklearn.cluster import KMeans
 from hmmlearn import hmm
 from statsmodels.nonparametric.kde import KDEUnivariate
 
-def detect_regimes_hmm(volatility_series, n_regimes=3, smoothing_period=5, verbose=False):
+def detect_regimes_hmm(volatility_series, n_regimes=3, smoothing_period=5, stability_period=48, verbose=False, max_attempts=5):
     """
-    Detect volatility regimes using Hidden Markov Models with improved stability.
-    
-    Parameters:
-        volatility_series (Series): Volatility time series
-        n_regimes (int): Number of regimes to identify
-        smoothing_period (int): Period for smoothing regime transitions
-        verbose (bool): Whether to print detailed progress messages
-        
-    Returns:
-        Series: Regime classifications (0 to n_regimes-1)
+    Detect volatility regimes using Hidden Markov Models with improved stability and robustness.
     """
     # Prepare data for HMM - robust handling of edge cases
     vol_values = volatility_series.replace([np.inf, -np.inf], np.nan)
@@ -36,73 +27,141 @@ def detect_regimes_hmm(volatility_series, n_regimes=3, smoothing_period=5, verbo
     
     # List of configurations to try in order of preference
     hmm_configs = [
-        {"covariance_type": "full", "n_iter": 500, "tol": 0.05},
-        {"covariance_type": "diag", "n_iter": 500, "tol": 0.05},
-        {"covariance_type": "spherical", "n_iter": 500, "tol": 0.1},
-        {"covariance_type": "tied", "n_iter": 1000, "tol": 0.1}
+        {"covariance_type": "full", "n_iter": 1000, "tol": 0.01, "random_state": 42},
+        {"covariance_type": "diag", "n_iter": 1000, "tol": 0.01, "random_state": 0},
+        {"covariance_type": "spherical", "n_iter": 1000, "tol": 0.05, "random_state": 1},
+        {"covariance_type": "tied", "n_iter": 1500, "tol": 0.05, "random_state": 2},
+        {"covariance_type": "full", "n_iter": 2000, "tol": 0.1, "random_state": 3}
     ]
     
+    best_model = None
+    best_score = float('-inf')
+    best_hidden_states = None
+    
     # Try different HMM configurations
-    for config in hmm_configs:
-        # Try multiple random initializations
-        for attempt in range(3):
+    for config_idx, config in enumerate(hmm_configs):
+        if verbose:
+            print(f"Trying HMM configuration {config_idx+1}/{len(hmm_configs)}: {config['covariance_type']} covariance")
+        
+        # Try multiple random initializations for this configuration
+        for attempt in range(max_attempts):
             try:
+                # Set different random seed for each attempt
+                random_seed = config["random_state"] + attempt if "random_state" in config else None
+                
                 # Initialize HMM model with current configuration
                 model = hmm.GaussianHMM(
                     n_components=n_regimes, 
                     covariance_type=config["covariance_type"], 
                     n_iter=config["n_iter"],
                     tol=config["tol"],
-                    random_state=None,  # Use different random initialization each time
+                    random_state=random_seed,
                     verbose=False
                 )
                 
-                # Fit model with a timeout mechanism
+                # Fit model
                 model.fit(X)
                 
                 # Check if model converged
                 if not model.monitor_.converged:
                     if verbose:
-                        print(f"HMM did not converge with {config['covariance_type']} covariance (attempt {attempt+1})")
+                        print(f"  Attempt {attempt+1}: HMM did not converge")
                     continue
                 
-                # Predict hidden states
-                hidden_states = model.predict(X)
+                # Calculate score
+                score = model.score(X)
                 
-                # Map states by volatility level (0=low, n_regimes-1=high)
-                # Calculate average volatility for each state
-                state_vol_means = {}
-                for state in range(n_regimes):
-                    if np.any(hidden_states == state):
-                        state_vol_means[state] = np.mean(volatility_series[hidden_states == state])
+                # If this is the best model so far, store it
+                if score > best_score:
+                    best_score = score
+                    best_model = model
+                    # Predict hidden states
+                    best_hidden_states = model.predict(X)
+                    
+                    if verbose:
+                        print(f"  Attempt {attempt+1}: New best model with score {score:.2f}")
                 
-                # Sort states by mean volatility
-                sorted_states = sorted(state_vol_means.items(), key=lambda x: x[1])
-                state_mapping = {old_state: new_state for new_state, (old_state, _) in enumerate(sorted_states)}
-                
-                # Apply mapping to reorder states from low to high volatility
-                mapped_states = np.array([state_mapping.get(state, state) for state in hidden_states])
-                
-                # Create Series with regime labels
-                regimes = pd.Series(mapped_states, index=volatility_series.index)
-                
-                # Apply smoothing to prevent frequent regime transitions
-                if smoothing_period > 1:
-                    regimes = regimes.rolling(window=smoothing_period, center=True).median().ffill().bfill()
-                    regimes = regimes.round().astype(int)
-                
-                # Only print success message if verbose
-                if verbose:
-                    print(f"Successfully fitted HMM with {config['covariance_type']} covariance")
-                return regimes
-                
+                # Early stopping if we found a good model
+                if best_score > -0.5 and attempt > 2:
+                    break
+                    
             except Exception as e:
                 if verbose:
-                    print(f"HMM estimation failed with {config['covariance_type']} covariance (attempt {attempt+1}): {str(e)}")
+                    print(f"  Attempt {attempt+1}: HMM estimation failed: {str(e)}")
+        
+        # If we found a good model with this configuration, we can stop
+        if best_model is not None and best_score > -0.5:
+            if verbose:
+                print(f"Found satisfactory model with {config['covariance_type']} covariance, score: {best_score:.2f}")
+            break
+    
+    # If we found a model, use it
+    if best_model is not None and best_hidden_states is not None:
+        # Map states by volatility level (0=low, n_regimes-1=high)
+        state_vol_means = {}
+        for state in range(n_regimes):
+            if np.any(best_hidden_states == state):
+                state_vol_means[state] = np.mean(volatility_series[best_hidden_states == state])
+        
+        # Sort states by mean volatility
+        sorted_states = sorted(state_vol_means.items(), key=lambda x: x[1])
+        state_mapping = {old_state: new_state for new_state, (old_state, _) in enumerate(sorted_states)}
+        
+        # Apply mapping to reorder states from low to high volatility
+        mapped_states = np.array([state_mapping.get(state, state) for state in best_hidden_states])
+        
+        # Create Series with regime labels
+        regimes = pd.Series(mapped_states, index=volatility_series.index)
+        
+        # Apply smoothing to prevent frequent regime transitions
+        if smoothing_period > 1:
+            regimes = regimes.rolling(window=smoothing_period, center=True).median().ffill().bfill()
+            regimes = regimes.round().astype(int)
+        
+        # Apply stability constraint if specified
+        if stability_period > 1:
+            regimes = apply_regime_stability_constraint(regimes, stability_period)
+        
+        return regimes
     
     # If all HMM attempts failed, fall back to K-means
     print("All HMM attempts failed. Falling back to K-means for regime detection")
     return detect_regimes_kmeans(volatility_series, n_regimes, smoothing_period)
+
+def apply_regime_stability_constraint(regimes, stability_period):
+    """
+    Apply stability constraint to prevent rapid regime transitions.
+    """
+    stable_regimes = regimes.copy()
+    
+    # Get unique regimes
+    unique_regimes = sorted(regimes.unique())
+    current_regime = regimes.iloc[0]
+    regime_counters = {r: 0 for r in unique_regimes}
+    regime_counters[current_regime] = 1
+    
+    # Process each time step
+    for i in range(1, len(regimes)):
+        new_regime = regimes.iloc[i]
+        
+        if new_regime == current_regime:
+            # Still in the same regime
+            regime_counters[current_regime] += 1
+        else:
+            # Potential regime change
+            regime_counters[new_regime] = 1
+            
+            # Only change regime if it has been stable for long enough
+            if regime_counters[current_regime] >= stability_period:
+                # Reset counter for previous regime
+                regime_counters[current_regime] = 0
+                current_regime = new_regime
+            else:
+                # Not enough consecutive periods, maintain previous regime
+                stable_regimes.iloc[i] = current_regime
+                regime_counters[current_regime] += 1
+    
+    return stable_regimes
 
 def detect_regimes_kmeans(volatility_series, n_regimes=3, smoothing_period=5):
     """

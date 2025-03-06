@@ -1,0 +1,87 @@
+================================================================================
+BEST REGIME-SPECIFIC PARAMETERS AND PERFORMANCE
+Generated on: 2025-03-06 22:20:16
+================================================================================
+
+BEST PARAMETERS FOR EACH REGIME
+--------------------------------------------------
+
+Regime 0 Parameters:
+  vol_method: parkinson
+  vol_lookback: 118
+  short_window: 7
+  long_window: 22
+  min_holding_period: 18
+  trend_strength_threshold: 0.25
+  regime_method: hmm
+  n_regimes: 3
+  regime_stability: 24
+  target_vol: 0.6
+  max_drawdown_exit: 0.16
+
+Regime 1 Parameters:
+  vol_method: parkinson
+  vol_lookback: 105
+  short_window: 9
+  long_window: 207
+  min_holding_period: 24
+  trend_strength_threshold: 0.25
+  regime_method: quantile
+  n_regimes: 2
+  regime_stability: 60
+  target_vol: 0.75
+  max_drawdown_exit: 0.17
+
+Regime 2 Parameters:
+  vol_method: parkinson
+  vol_lookback: 148
+  short_window: 13
+  long_window: 69
+  min_holding_period: 12
+  trend_strength_threshold: 0.35
+  regime_method: quantile
+  n_regimes: 2
+  regime_stability: 72
+  target_vol: 0.39999999999999997
+  max_drawdown_exit: 0.14
+
+PERFORMANCE USING BEST PARAMETERS
+--------------------------------------------------
+
+total_return: -87.5274%
+annualized_return: -34.0386%
+volatility: 7.7182%
+max_drawdown: -92.2037%
+sharpe_ratio: -1.0403
+sortino_ratio: -0.6917
+calmar_ratio: -0.0036
+win_rate: 49.2080%
+gain_to_pain: 0.9765
+
+Buy & Hold Return: 1190.2797%
+Outperformance: -1277.8072%
+
+PERFORMANCE BY REGIME
+--------------------------------------------------
+
+Regime 0 (11751 periods, 26.81%):
+  Return: -39.9890%
+  Market Return: 39.9226%
+  Alpha: -79.9116%
+  Sharpe Ratio: -1.5846
+  Parameters: SMA(7/22), Trend=0.25
+
+Regime 1 (18940 periods, 43.22%):
+  Return: -47.6441%
+  Market Return: 78.9334%
+  Alpha: -126.5775%
+  Sharpe Ratio: -0.5825
+  Parameters: SMA(9/207), Trend=0.25
+
+Regime 2 (13134 periods, 29.97%):
+  Return: -60.3029%
+  Market Return: 415.3528%
+  Alpha: -475.6556%
+  Sharpe Ratio: -1.5359
+  Parameters: SMA(13/69), Trend=0.35
+
